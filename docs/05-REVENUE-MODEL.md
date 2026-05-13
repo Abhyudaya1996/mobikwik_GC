@@ -1,241 +1,213 @@
 # 05 — Revenue Model: Mobikwik × Great.Cards
 
-**Version:** 1.0  
+**Version:** 2.0  
 **Owner:** Abhyudaya  
-**Status:** Draft — Phase 1
+**Status:** Active — Phase 1
 
 ---
 
 ## Purpose
 
-Replace every static revenue claim with a variable model. Change the inputs; the output recomputes. No "₹X Cr base / ₹Y Cr stretch" claims in the pitch — only the calculator with inputs visible.
+A sequential conversion model with all assumptions visible and editable. No static claims. The demo page renders this model live — every number below is a default in the app and can be changed on screen.
 
 ---
 
-## Benchmark context (sanity check before touching inputs)
+## Industry benchmark (sanity check)
 
 ```
-Industry reference (reported / modelled):
-
 Paisabazaar                  ~80–100K CC / year (at scale, multi-year)
 BankBazaar                   ~60–90K CC / year
 Bajaj Markets                ~40–70K CC / year
 Total Indian digital CC aggregator market    ~8–10 lakh / year
 
 Mobikwik realistic share as new entrant:
-  Year 1   20,000 – 50,000 cards
-  Year 2   50,000 – 1,20,000 cards
-  Year 3   80,000 – 2,00,000 cards
+  Year 1   20,000 – 25,000 cards (seasonalized)
+  Year 2   40,000 – 60,000 cards
+  Year 3   60,000 – 1,00,000 cards
 ```
 
-Any Year 1 projection above 60K cards needs an explicit reason to justify it.
+Year 1 conservative output: **22,392 cards/year** (flat 12×) or **24,070 cards** (seasonalized). Sits at the lower end of the Year 1 range — deliberately conservative.
 
 ---
 
-## MAU split across 6 cohorts
+## Section 1 — The 6-step Sequential Funnel
 
-Starting MAU: **31,90,000** (conservative slice of 36M wallet MAU)
+Each step is an independently editable input. No derived constants hardcoded.
 
-| Cohort | MAU | Basis |
-|---|---|---|
-| FD Pledge | 1,59,500 | ~5% of MAU — FD holders inferred from Mobikwik savings product |
-| EMI Graduate (ZIP) | 3,19,000 | ~10% — ZIP activated base ~1.51M; graduates (≥3 EMIs) subset |
-| Bill-Pay Regular | 6,38,000 | ~20% — recurring utility bill payers via wallet |
-| Spend-Backed (Lens) | 4,78,500 | ~15% — Lens AA cashflow-tagged users |
-| Score Watcher | 4,78,500 | ~15% — users who have viewed credit score in last 30 days |
-| Long-tail NTC | 11,16,500 | ~35% — no qualifying signal; routes to First Card |
-| **Total** | **31,90,000** | |
+```
+Step  Label                 Default    Output (at defaults)
+────  ──────────────────    ────────   ────────────────────
+  1   Total MAU             31,90,000  31,90,000
+  2   Relevant Cohort       30%         9,57,000
+  3   Placement Visible     65%         6,22,050
+  4   Blended CTR           10%           62,205
+  5   Form Completion       40%           24,882
+  6   Bank Approval         7.5%           1,866  ← Cards / month
+```
+
+**Cards / year (flat):** 1,866 × 12 = **22,392**  
+**Cards / year (seasonalized):** **24,070** (avg index 1.075)
+
+### Why 10% blended CTR is defensible at conservative
+
+The blended 10% is not applied to all MAU — it is applied to the 6.22L users who have already passed two filters (credit-eligible + placement visible). These are users on high-intent surfaces:
+
+- EMI bill-due screen after a repayment streak: 10–15% CTR
+- Bill-pay success screen (loss frame): 8–14% CTR
+- Score-unlock pulse: 5–12% CTR
+- Lens cashflow match: 5–10% CTR
+
+Generic homepage tile (0.5–2%) pulls the blend down. The 10% blended figure is consistent with the cohort-level weighted average (see Section 2).
+
+### Why 40% form completion is defensible
+
+Placement → form is a short, personalized journey:
+- Card pre-matched to user's cohort
+- Income and score pre-populated from Lens / score page
+- No bureau pull at this stage (eligibility displayed upfront)
+
+40% is lower than a native app checkout (60–70%) to account for users who browse but don't commit.
 
 ---
 
-## Inputs — all editable
+## Section 2 — Cohort Breakdown (5 revenue cohorts)
 
-```
-INPUT                                    Variable           Default       Range
-─────────────────────────────────────    ──────────         ────────      ─────────────
-MAU: FD Pledge                           M_fd               1,59,500      50K–3L
-MAU: EMI Graduate                        M_emi              3,19,000      1L–6L
-MAU: Bill-Pay Regular                    M_bill             6,38,000      2L–12L
-MAU: Spend-Backed (Lens)                 M_lens             4,78,500      1L–8L
-MAU: Score Watcher                       M_score            4,78,500      1L–8L
-MAU: Long-tail NTC                       M_ntc              11,16,500     5L–20L
+These are **revenue model cohorts** — financial groupings for the projection. They are distinct from the 6 operational routing cohorts used in the demo (see `06-COHORT-DEFINITIONS.md`).
 
-CTR by cohort
-  FD Pledge                              CTR_fd             9%            4%–15%
-  EMI Graduate                           CTR_emi            9%            4%–15%
-  Bill-Pay Regular                       CTR_bill           6%            2%–10%
-  Spend-Backed (Lens)                    CTR_lens           6%            2%–10%
-  Score Watcher                          CTR_score          9%            4%–15%
-  Long-tail NTC                          CTR_ntc            3%            1%–6%
+Relevant MAU (Step 2) = 9,57,000. All MAU%s apply to this base.
 
-Apply-now rate (% of clicks)             Apply_rate         25%           15%–40%
+| Cohort | MAU% | CTR | Completion | Approval | Cards/mo | Comm/card | Card Type |
+|---|---|---|---|---|---|---|---|
+| Utility Bill Payer | 30% | 12% | 42% | 7% | 659 | ₹1,200 | Cashback utility |
+| Brand Spender | 25% | 11% | 40% | 6% | 411 | ₹1,500 | Co-branded |
+| Score Watcher | 15% | 14% | 45% | 9% | 529 | ₹1,800 | Score-matched |
+| FD Holder | 10% | 10% | 38% | 8% | 189 | ₹1,100 | Secured FD-backed |
+| Generic / No Signal | 20% | 6% | 35% | 4% | 105 | ₹900 | Entry-level LTF |
+| **Blended / Total** | **100%** | **—** | **—** | **—** | **1,892** | **₹1,406** | — |
 
-Card-out rate (% of MAU — not clicks)
-  FD Pledge                              CO_fd              6%            2%–10%
-  EMI Graduate                           CO_emi             5%            2%–8%
-  Bill-Pay Regular                       CO_bill            3%            1%–6%
-  Spend-Backed (Lens)                    CO_lens            3%            1%–6%
-  Score Watcher                          CO_score           7%            3%–12%
-  Long-tail NTC → First Card             CO_ntc             1%            0.5%–2%
+**Reconciliation:** Cohort model (1,892) vs funnel model (1,866) = **1.4% diff** (within 5% tolerance ✓).
 
-Commission per card — GC cohorts (blended)   Comm_gc        ₹2,000        ₹1,500–₹3,000
-Commission per card — First Card (NTC)       Comm_ntc       ₹0            ₹0 (Mobikwik earns; GC does not)
+**Blended commission: ₹1,406/card** (weighted by card volume).
 
-Revenue share
-  GC share (base placements)            GC_share           30%           20%–40%
-  Mobikwik share                        MW_share           70%           60%–80%
+### Cohort → operational routing mapping
 
-GC cost per card
-  Ops + infra                           GC_fixed           ₹150          ₹100–₹250
-  Hook funding per card (blended)       Hook_cost          ₹350          ₹0–₹600
-```
+| Revenue cohort | Operational routing cohort (06-COHORT-DEFINITIONS.md) |
+|---|---|
+| Utility Bill Payer | Bill-Pay Regular |
+| Brand Spender | Spend-Backed (Lens Cashflow) |
+| Score Watcher | Score Watcher |
+| FD Holder | FD Pledge |
+| Generic / No Signal | Residual (EMI Graduate thin-file + NTC with weak signal) |
+
+Note: Long-tail NTC routed to SBM First Card is excluded from this revenue model entirely — Mobikwik earns that commission; GC earns ₹0.
 
 ---
 
-## Formulas
+## Section 3 — Month-on-Month Seasonality
+
+Base: 1,866 cards/month. Multiplied by seasonality index each month.
+
+| Month | Index | Cards | Notes |
+|---|---|---|---|
+| Jan | 0.85 | 1,586 | Post-Diwali slowdown |
+| Feb | 0.85 | 1,586 | |
+| Mar | 0.90 | 1,679 | |
+| Apr | 1.20 | 2,239 | Summer travel + spend |
+| May | 1.20 | 2,239 | |
+| Jun | 0.80 | 1,493 | Monsoon lean ☂ |
+| Jul | 0.80 | 1,493 | Monsoon lean ☂ |
+| Aug | 0.90 | 1,679 | |
+| Sep | 1.40 | 2,612 | Navratri / Onam |
+| Oct | 1.40 | 2,612 | Dussehra |
+| Nov | 1.50 | 2,799 | **Diwali peak** 🪔 |
+| Dec | 1.10 | 2,053 | |
+| **Full Year** | **1.075 avg** | **24,070** | |
+
+Gross commission (seasonalized) = 24,070 × ₹1,406 = **₹3.38 Cr**
+
+---
+
+## Section 4 — Revenue Split Sensitivity
+
+Fixed cost: ₹2,00,000/mo (Year 1 lean team). Variable: ₹150/card.
+
+| Split (MW / GC) | GC Rev/card | Ops/card | GC Net/card | GC Annual Rev | GC Annual Net | Break-even cards/mo |
+|---|---|---|---|---|---|---|
+| 80 / 20 | ₹281 | ₹150 | ₹131 | ₹62.92L | ₹5.33L | **1,527** |
+| **70 / 30** | ₹422 | ₹150 | ₹272 | ₹94.49L | ₹36.91L | **735** |
+| 60 / 40 | ₹562 | ₹150 | ₹412 | ₹1.26Cr | ₹68.26L | **485** |
+| 50 / 50 | ₹703 | ₹150 | ₹553 | ₹1.57Cr | ₹99.83L | **362** |
+
+Projected cards/mo: **1,866**. All four splits are profitable (break-even < projection).
+
+**Pitch anchor: 70/30.** GC margin 39%, net ₹36.91L/year. Mobikwik takes ₹2.20 Cr/year.
+
+---
+
+## GC P&L at 70/30 (Year 1 conservative)
 
 ```
-Cards_monthly_gc =
-    M_fd    × CO_fd
-  + M_emi   × CO_emi
-  + M_bill  × CO_bill
-  + M_lens  × CO_lens
-  + M_score × CO_score
-
-Cards_monthly_ntc  = M_ntc × CO_ntc   [→ First Card; no GC revenue]
-
-Cards_annual_gc    = Cards_monthly_gc × 12
-Gross_revenue      = Cards_annual_gc × Comm_gc
-
-GC_gross_revenue   = Gross_revenue × GC_share
-MW_gross_revenue   = Gross_revenue × MW_share
-
-GC_total_cost      = Cards_annual_gc × (GC_fixed + Hook_cost)
-GC_net_revenue     = GC_gross_revenue − GC_total_cost
-
-Unit_positive      = GC_net_revenue > 0
-GC_margin_pct      = GC_net_revenue / GC_gross_revenue
+Gross Revenue (GC 30% share)     ₹94.49L / year    ₹7.87L / month
+Fixed Costs (team + infra)       ₹24.00L / year    ₹2.00L / month
+Variable Costs (₹150 × 22,392)  ₹33.59L / year    ₹2.80L / month
+──────────────────────────────────────────────────────────────────
+Net Profit                       ₹36.90L / year    ₹3.07L / month
+GC margin                        39%
+Unit positive?                   YES ✓
 ```
 
 ---
 
 ## Three scenario presets
 
-### Preset 1 — Conservative (Year 1, 4 placements, no hooks live)
-
-4 placements: Credit Score page + Lens Cashflow footer + EMI Bill Due + App grid tile. No AI calling. No hooks.
+### Conservative (Year 1 default — locked in demo)
 
 ```
-M_fd=1,59,500     CO_fd=5%      → 7,975/mo
-M_emi=3,19,000    CO_emi=4%     → 12,760/mo
-M_bill=6,38,000   CO_bill=2%    → 12,760/mo  [bill only 2 placements live]
-M_lens=4,78,500   CO_lens=2%    → 9,570/mo   [Lens footer only]
-M_score=4,78,500  CO_score=6%   → 28,710/mo  [Score page highest performer]
-────────────────────────────────────────────────────────
-Cards_monthly_gc = 71,775 / 5 = [see note]
+MAU: 31,90,000  cohort%: 30  vis%: 65  CTR: 10  comp: 40  appr: 7.5
+Split: 70/30    Fixed: ₹2L/mo   Ops: ₹150/card
+Cards/mo: 1,866  |  Annual gross: ₹3.15Cr  |  GC net: ₹36.9L
 ```
 
-> **Note:** Card-out rate is applied to MAU, not a sequence; sum above is illustrative per-cohort monthly adds. Lock to a single-funnel output for the pitch.
-
-**Single-funnel conservative output:**
+### Realistic (Year 2 — Lens coverage expands)
 
 ```
-31,90,000 MAU × 4.5% blended CTR × 25% apply × 25% bank approval
-= 2,871 cards/month
-= 34,452 cards/year
-Gross = ₹6.89 Cr
-GC 30% = ₹2.07 Cr/year
+MAU: 31,90,000  cohort%: 35  vis%: 70  CTR: 11  comp: 42  appr: 8
+Split: 70/30    Fixed: ₹1.75L/mo   Ops: ₹150/card
+Cards/mo: ~2,680  |  Annual gross: ₹4.52Cr  |  GC net: higher
 ```
 
-This is within the Year 1 benchmark range. Use this as the pitch default.
-
----
-
-### Preset 2 — Realistic (Year 2, all 12 placements, 3 hooks live)
-
-H1 Score-Unlock + H2 ZIP Graduate + H3 Wallet-to-Card deployed. All placements live.
+### Aggressive (Year 2–3 — all surfaces, full Lens, AI calling)
 
 ```
-Blended CTR lifts to 6% with hooks
-Apply-now improves to 28%
-Bank approval improves to 30% (better-matched users from Lens)
-
-31,90,000 × 6% × 28% × 30% = 1,606 cards/month → [scaled to Year 2 MAU growth]
-
-Assume MAU in scope grows to 45L (Year 2 wallet growth):
-45,00,000 × 6% × 28% × 30% = 2,268 cards/month
-= 27,216 cards/year
-Gross = ₹5.44 Cr
-GC 30% = ₹1.63 Cr/year [conservative — Year 2 with hooks]
-```
-
-> This looks lower than Year 1 conservative because it applies strict bank approval rate. Adjust `CO_*` inputs per actual bank data from Mobikwik.
-
----
-
-### Preset 3 — Aggressive (Year 2–3, all hooks, AI calling, referral)
-
-All 12 placements + all 6 hooks + AI calling on Score Watcher and EMI Graduate cohorts.
-
-```
-AI calling lift: +2pp card-out on Score Watcher and EMI Graduate
-Referral ladder adds ~5% incremental cards from post-approval users
-
-Conservative Year 2 base: 27,216 cards/year
-+ AI calling lift (~3,000 incremental/year)
-+ Referral (~1,360 incremental/year)
-= ~31,576 cards/year
-Gross = ₹6.32 Cr
-GC 30% = ₹1.90 Cr/year [before hook costs]
-GC net after hooks = depends on Hook_cost input
+MAU: 31,90,000  cohort%: 40  vis%: 75  CTR: 12  comp: 45  appr: 9
+Split: 60/40    Fixed: ₹1.5L/mo   Ops: ₹150/card
+Cards/mo: ~4,112  |  Annual gross: ₹6.93Cr
 ```
 
 ---
 
-## Revenue split sensitivity (at Year 1 conservative: ₹6.89 Cr gross)
+## Cost structure
 
-| Split | Mobikwik revenue | GC gross | GC cost (₹500/card) | GC net | Unit positive? |
-|---|---|---|---|---|---|
-| 70/30 | ₹4.82 Cr | ₹2.07 Cr | ₹1.72 Cr | **₹0.35 Cr** | Yes, thin |
-| 60/40 | ₹4.13 Cr | ₹2.76 Cr | ₹1.72 Cr | **₹1.04 Cr** | Yes |
-| 50/50 | ₹3.45 Cr | ₹3.45 Cr | ₹1.72 Cr | **₹1.73 Cr** | Yes |
-| 80/20 | ₹5.51 Cr | ₹1.38 Cr | ₹1.72 Cr | **−₹0.34 Cr** | NO |
+| Item | Year 1 | Notes |
+|---|---|---|
+| Team + infra (fixed) | ₹2,00,000/mo | 2 people + cloud infra. Year 1 lean. |
+| Ops per card | ₹150/card | Processing, caller support, infra variable |
+| Hook funding | ₹0/card | Year 1: zero-cost hooks only (H1 Score-Unlock, H4 FD-Backed) |
 
-GC cost = ₹34,452 cards × ₹500 blended (₹150 fixed + ₹350 hook) = ₹1.72 Cr.  
-80/20 only breaks even if hook cost drops to ₹0 (H3, H4, H5 only — no ZIP Graduate waiver, no referral payout).
+Zero-cost hook policy for Year 1: H1 and H4 require no payout. H2 (ZIP Graduate waiver) and H6 (Referral) introduced in Year 2 once volume justifies it.
 
 ---
 
-## GC unit economics at 30% share (Year 1 default)
+## What changed from v1.0
 
-```
-GC gross revenue                     ₹2.07 Cr/year
-Fixed costs
-  Team (PM + ops + callers)          ₹1.44 Cr/year  (₹12L/mo)
-  Infra + API                        ₹0.18 Cr/year  (₹1.5L/mo)
-Variable costs
-  Ops / card: ₹150 × 34,452          ₹0.52 Cr/year
-  Hook funding: ₹350 × 34,452        ₹1.21 Cr/year
-
-GC total cost                        ₹3.35 Cr/year
-GC net                               −₹1.28 Cr/year   [BELOW UNIT at Year 1]
-```
-
-**Year 1 is below unit at 30% share with full hook deployment.** Two paths to unit-positive:
-
-1. **Reduce hook cost** — deploy only H4 (FD-Backed, ₹0 cost) and H1 (Score-Unlock, ₹0 cost) in Year 1. Drops hook cost to ~₹0. GC net = ₹2.07 − ₹1.62 = **+₹0.45 Cr**. Unit positive.
-2. **Increase share to 40%** — GC gross = ₹2.76 Cr. Net = ₹2.76 − ₹1.62 = **+₹1.14 Cr** (hooks at ₹0 only).
-
-**Pitch recommendation:** Open at 30% with zero-cost hooks only. Year 2 introduces paid hooks once volume justifies it.
-
----
-
-## What to do with this model
-
-```
-1. Put INPUT table into a Google Sheet.
-2. Add FORMULAS as a second sheet.
-3. Before the meeting: lock a scenario as "pitch default" (Preset 1 — Conservative).
-4. During the meeting: if Bipin pushes back on a number, change it on screen.
-5. Do not present Year 2/3 numbers unless asked — lead with Year 1 conservative only.
-```
+| Item | v1.0 | v2.0 |
+|---|---|---|
+| Funnel architecture | Cohort × card-out rate | 6-step sequential conversion |
+| Cards/month (conservative) | 2,871 | 1,866 |
+| Fixed cost assumption | ₹13.5L/mo | ₹2.0L/mo (Year 1 lean) |
+| Commission (blended) | ₹2,000 | ₹1,406 (cohort-weighted) |
+| Annual gross (conservative) | ₹6.89Cr | ₹3.15Cr (flat) / ₹3.38Cr (seasonalized) |
+| Unit positive at 70/30? | No (below unit at ₹13.5L/mo fixed) | **Yes (margin 39%)** |
+| Revenue cohorts | 6 operational cohorts | 5 financial groupings |
+| Seasonality | Not modelled | 12-month index (1.075 avg) |
+| Split sensitivity | 3 splits, no break-even row | 4 splits + break-even cards/mo |

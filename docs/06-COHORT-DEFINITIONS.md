@@ -14,6 +14,26 @@ No new data infrastructure required. All signals already exist inside Mobikwik.
 
 ---
 
+## Two cohort frameworks — do not conflate
+
+**This doc describes the 6 operational routing cohorts** — how users are tagged and which card catalogue they see in-app.
+
+The Revenue Potential page uses **5 financial groupings** (Utility Bill Payer, Brand Spender, Score Watcher, FD Holder, Generic / No Signal) which are simplified financial buckets, not routing logic. The mapping:
+
+| Revenue model cohort | Operational routing cohort (this doc) |
+|---|---|
+| Utility Bill Payer (30% of relevant MAU) | Bill-Pay Regular |
+| Brand Spender (25%) | Spend-Backed (Lens Cashflow) |
+| Score Watcher (15%) | Score Watcher |
+| FD Holder (10%) | FD Pledge |
+| Generic / No Signal (20%) | Residual credit-eligible users (excl. First Card NTC) |
+
+Long-tail NTC → SBM First Card is excluded from the revenue model (GC earns ₹0; Mobikwik keeps commission). It still appears in the operational routing below.
+
+---
+
+---
+
 ## Cohort 1 — FD Pledge
 
 | Field | Detail |
@@ -218,19 +238,20 @@ If multiple signals present → highest-priority cohort wins.
 
 ---
 
-## Cohort performance summary
+## Cohort performance summary (operational routing cohorts)
 
-| Cohort | MAU | CTR | Card-out | Cards/month | Revenue route |
-|---|---|---|---|---|---|
-| FD Pledge | 1,59,500 | 9% | 6% | 9,570 | GC |
-| EMI Graduate | 3,19,000 | 9% | 5% | 15,950 | GC |
-| Bill-Pay Regular | 6,38,000 | 6% | 3% | 19,140 | GC |
-| Spend-Backed | 4,78,500 | 6% | 3% | 14,355 | GC |
-| Score Watcher | 4,78,500 | 9% | 7% | 33,495 | GC |
-| Long-tail NTC | 11,16,500 | 3% | 1% | 11,165 | First Card (MW) |
-| **Total GC** | **20,73,500** | — | — | **~2,871*** | **GC** |
+These rates describe expected behaviour per routing cohort — intent signal, tone, and surface quality. They are not the revenue model inputs (see `05-REVENUE-MODEL.md` for financial projections).
 
-*2,871 cards/month is the locked Year 1 conservative funnel figure. The cohort-level card-out rates above are the theoretical upper bound if all placements are live and fully optimised. Start with the funnel figure for the pitch.
+| Cohort | Est. MAU | CTR range | Approval signal | Revenue route |
+|---|---|---|---|---|
+| FD Pledge | ~96,000 (10% of rel. MAU) | 10–15% | Near-certain (FD as collateral) | GC |
+| EMI Graduate | ~1,43,000 (15% of rel. MAU) | 9–12% | Strong (repayment track record) | GC |
+| Bill-Pay Regular | ~2,87,000 (30% of rel. MAU) | 10–14% | Moderate (cashflow signal) | GC |
+| Spend-Backed | ~2,39,000 (25% of rel. MAU) | 9–12% | Moderate (Lens cashflow) | GC |
+| Score Watcher | ~1,43,000 (15% of rel. MAU) | 12–16% | Highest (explicit intent + score known) | GC |
+| Long-tail NTC | ~21,90,000 (residual) | 2–4% | Low — routed to First Card | First Card (MW) |
+
+**Year 1 revenue model output (from 5-cohort financial model):** 1,866 cards/mo base, 1,892 cohort-derived. See `05-REVENUE-MODEL.md`.
 
 ---
 

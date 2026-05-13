@@ -4,6 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>MobiKwik x Great.Cards</title>
+  <link rel="icon" href="/assets/brand/mobikwik-logo-v2.png" type="image/png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -13,10 +14,11 @@
 <body>
   <header class="topbar">
     <a class="brand" href="/" data-link>
-      <span class="brand-mark">M</span>
-      <span>MobiKwik</span>
-      <span class="muted">x</span>
-      <span>Great.Cards</span>
+      <img src="/assets/brand/mobikwik-logo-v2.png" alt="MobiKwik" class="brand-logo-mk">
+      <span class="muted brand-x">×</span>
+      <span class="brand-gc-pill">
+        <img src="/assets/brand/gc-logo-white.svg" alt="Great.Cards" class="brand-logo-gc">
+      </span>
     </a>
     <nav>
       <a href="/" data-link data-nav="/">Homepage</a>
@@ -34,8 +36,8 @@
         <div class="home-hero-left">
           <p class="home-tag">Green field &nbsp;·&nbsp; No CC aggregator on Mobikwik today</p>
           <p class="home-kicker">Conservative Year 1 additional revenue</p>
-          <h1 class="home-number">₹6.89 Cr<span class="home-dot">.</span></h1>
-          <p class="home-sub">From 36M wallet MAU Mobikwik already has.</p>
+          <h1 class="home-number">₹3.38 Cr<span class="home-dot">.</span></h1>
+          <p class="home-sub">From 3.19M wallet MAU Mobikwik already has.</p>
           <p class="home-hint">No new users. No new product. No Mobikwik backend changes.</p>
           <div class="home-ctas">
             <a href="/demo" data-link class="button primary">See it working →</a>
@@ -43,27 +45,34 @@
           </div>
         </div>
         <div class="home-hero-right">
-          <div class="funnel-vis">
-            <div class="fv-row"><span class="fv-num">36M</span><span class="fv-lbl">Wallet MAU</span></div>
-            <div class="fv-pipe"><div class="fv-line"></div><span class="fv-pct">4.5% CTR</span></div>
-            <div class="fv-row fv-mid"><span class="fv-num">1,61,550</span><span class="fv-lbl">Clicks / month</span></div>
-            <div class="fv-pipe"><div class="fv-line"></div><span class="fv-pct">25% apply</span></div>
-            <div class="fv-row fv-mid"><span class="fv-num">40,388</span><span class="fv-lbl">Applications</span></div>
-            <div class="fv-pipe"><div class="fv-line"></div><span class="fv-pct">7.1% card-out</span></div>
-            <div class="fv-row fv-bot"><span class="fv-num">2,871</span><span class="fv-lbl">Cards / month</span></div>
+          <div class="funnel-vis fv-simple">
+            <div class="fvs-row">
+              <div class="fvs-num">3.19M</div>
+              <div class="fvs-lbl">Wallet MAU</div>
+            </div>
+            <div class="fvs-arrow">↓</div>
+            <div class="fvs-row fvs-mid">
+              <div class="fvs-num">1,866</div>
+              <div class="fvs-lbl">Cards / month</div>
+            </div>
+            <div class="fvs-arrow">↓</div>
+            <div class="fvs-row fvs-bot">
+              <div class="fvs-num">₹3.38 Cr</div>
+              <div class="fvs-lbl">Year 1 revenue</div>
+            </div>
           </div>
         </div>
       </div>
 
       <!-- ── Stats strip ────────────────────────────── -->
       <div class="stats-strip">
-        <div class="stat-item"><div class="stat-num">186.6M</div><div class="stat-lbl">Registered users</div></div>
+        <div class="stat-item"><div class="stat-num">186.6M</div><div class="stat-lbl">Registered Users</div></div>
         <div class="stat-sep"></div>
-        <div class="stat-item"><div class="stat-num">36M</div><div class="stat-lbl">Wallet MAU</div></div>
+        <div class="stat-item"><div class="stat-num">3.19M</div><div class="stat-lbl">Wallet MAU</div></div>
         <div class="stat-sep"></div>
-        <div class="stat-item"><div class="stat-num">34.4M</div><div class="stat-lbl">Pre-approved</div></div>
+        <div class="stat-item"><div class="stat-num">34.4M</div><div class="stat-lbl">ZIP Pre-approved</div></div>
         <div class="stat-sep"></div>
-        <div class="stat-item"><div class="stat-num">1.51M</div><div class="stat-lbl">ZIP EMI activated</div></div>
+        <div class="stat-item"><div class="stat-num">1.51M</div><div class="stat-lbl">ZIP EMI Activated</div></div>
         <div class="stat-sep"></div>
         <div class="stat-item stat-zero"><div class="stat-num">Zero</div><div class="stat-lbl">CC aggregator today</div></div>
       </div>
@@ -107,7 +116,7 @@
         <h2 class="sec-h2" style="max-width:620px">The distribution. The data. The intent signals.</h2>
         <div class="brings-grid">
           <div class="brings-card">
-            <div class="brings-num">36M</div>
+            <div class="brings-num">3.19M</div>
             <div class="brings-lbl">Wallet MAU</div>
             <div class="brings-desc">Already active, transacting users — not cold traffic or paid acquisition</div>
           </div>
@@ -157,7 +166,7 @@
           <input id="incomeControl" type="range" min="10000" max="200000" step="5000" value="65000">
         </div>
         <div class="pb-cell">
-          <label class="pb-mini">Lens cohort tag</label>
+          <label class="pb-mini">User type</label>
           <select id="lensControl"></select>
         </div>
         <div class="pb-cell">
@@ -192,8 +201,16 @@
     <section id="revenue" class="page page-dark">
       <div class="rev-page-wrap">
         <p class="eyebrow">Revenue Potential</p>
-        <h1>Editable funnel, visible assumptions.</h1>
+        <h1>No black boxes. Every number is live.</h1>
         <div id="revenueModel"></div>
+      </div>
+    </section>
+
+    <section id="funnel-gc" class="page page-dark">
+      <div class="rev-page-wrap">
+        <p class="eyebrow">GC Internal</p>
+        <h1>How we maximise revenue from the Mobikwik partnership.</h1>
+        <div id="funnelGCModel"></div>
       </div>
     </section>
 

@@ -78,15 +78,26 @@ Mobikwik app (existing)
 
 ## Year 1 locked funnel
 
-| Metric | Monthly | Yearly |
+6-step sequential model. All inputs editable in the Revenue Potential page.
+
+| Step | Input | Monthly output |
 |---|---|---|
-| MAU in scope | 31,90,000 | — |
-| Blended CTR | 4–5% | — |
-| Apply-now | 25% of clicks | — |
-| Card-out | 3–4% of MAU | — |
-| **Cards issued** | **2,871** | **34,452** |
-| Gross commission (₹2,000 blended) | ₹0.57Cr | ₹6.89Cr |
-| GC share (30%) | ₹0.17Cr | **₹2.07Cr** |
+| MAU | 31,90,000 | 31,90,000 |
+| Relevant cohort | 30% | 9,57,000 |
+| Placement visible | 65% | 6,22,050 |
+| Blended CTR | 10% | 62,205 |
+| Form completion | 40% | 24,882 |
+| Bank approval | 7.5% | **1,866 cards/mo** |
+
+| Metric | Monthly | Yearly (flat) | Yearly (seasonalized) |
+|---|---|---|---|
+| Cards issued | 1,866 | 22,392 | 24,070 |
+| Gross commission (₹1,406 blended) | ₹26.2L | ₹3.15Cr | ₹3.38Cr |
+| Mobikwik share (70%) | ₹18.4L | ₹2.20Cr | ₹2.37Cr |
+| GC share (30%) | ₹7.9L | ₹94.5L | ₹1.02Cr |
+| GC net (after ₹2L fixed + ₹150/card) | ₹3.1L | **₹36.9L** | — |
+
+GC unit positive at 70/30: **yes, margin 39%**. See `05-REVENUE-MODEL.md` for full sensitivity.
 
 ---
 

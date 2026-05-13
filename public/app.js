@@ -18,7 +18,17 @@ const state = {
 };
 
 // ─── Constants ────────────────────────────────────────────────────────────────
-const lensTags    = ['FD Pledge', 'EMI Grad', 'Bill-Pay', 'Spend-Backed', 'Score Watcher', 'NTC'];
+const lensTags    = ['FD Pledge', 'EMI Graduate', 'Bill-Pay Regular', 'Spend-Backed', 'Score Watcher', 'NTC'];
+
+// cohort → primary placement (for auto-routing on cohort switch)
+const cohortPrimaryPlacement = {
+  'FD Pledge':        4,
+  'EMI Graduate':     2,
+  'Bill-Pay Regular': 3,
+  'Spend-Backed':     4,
+  'Score Watcher':    5,
+  'NTC':              6,
+};
 const scoreBuckets = ['No score', '600', '680', '750', '800'];
 const zipStatuses  = ['Active', 'Graduated', 'Never used'];
 
@@ -137,7 +147,7 @@ const PLACEMENTS = [
         'User tapped a notification — e.g. "Your score crossed 720, here\'s what unlocks". This is where they land.',
         'The dark <span class="cm-pulse">FROM YOUR NOTIFICATION</span> hero references the exact trigger that fired the push.',
         'A single hero card occupies the screen — no list, no choice fatigue. Apply or back.',
-        'Switch <b>Lens cohort</b> above to see how the same mechanic fires for FD Pledge, EMI Grad, Bill-Pay etc.',
+        'Switch <b>Lens cohort</b> above to see how the same mechanic fires for FD Pledge, EMI Graduate, Bill-Pay Regular etc.',
       ],
     },
   },
@@ -161,7 +171,7 @@ const notifications = {
     },
     tone: 'Confident, doubt-removing', cap: '3 / 30 days',
   },
-  'EMI Grad': {
+  'EMI Graduate': {
     days: {
       0:  ['Push',     "You've paid 3 EMIs on time. That's exactly what banks approve →"],
       1:  ['Push',     "People with your track record get approved fast. This is already open for you →"],
@@ -170,7 +180,7 @@ const notifications = {
     },
     tone: 'Earned, confident', cap: '4 / 30 days',
   },
-  'Bill-Pay': {
+  'Bill-Pay Regular': {
     days: {
       0: ['Push', "You paid ₹8,400 in bills this month. ≈₹420 of that could've come back."],
       2: ['Push', "Same bills next month. This time — get paid for them →"],
@@ -204,9 +214,37 @@ const notifications = {
 };
 
 const revenue = {
-  mau: 3190000, see: 35, click: 4.5, apply: 25,
-  approval: 22.8, commission: 2000, split: 30,
-  team: 1200000, infra: 150000, caller: 150, ops: 100, hook: 0,
+  // Funnel (6 steps)
+  mau: 3190000,
+  cohortPct: 30,
+  visibilityPct: 65,
+  ctrPct: 10,
+  completionPct: 40,
+  approvalPct: 7.5,
+  split: 30,          // GC share %
+  // Costs
+  team: 100000,       // ₹1L/mo Year 1
+  infra: 0,
+  ops: 0,
+  hook: 0,
+  caller: 0,
+  // Retargeting — GC internal, shown on /funnel-gc only
+  apiSplitPct:   50,  // % of form-starters via API (phone captured, retargetable)
+  dropOffPct:    50,  // % of API starters who abandon before bank submission
+  retargConvPct: 3,   // % of dropped API users who convert via retargeting
+  retargComm:    2500,// ₹ commission on retargeted card (higher intent = premium match)
+  retargBonus:   200, // ₹ user bonus per retargeted card (GC cost, no MW share)
+  // Cohort table — MAU% and rates aligned to Excel v3
+  cohorts: [
+    { name: 'Utility Bill Payer',  mauPct: 25, ctr: 12, completion: 40, approval: 7, commission: 1200, cardType: 'Cashback utility' },
+    { name: 'Brand Spender',       mauPct: 20, ctr: 11, completion: 40, approval: 7, commission: 1500, cardType: 'Co-branded' },
+    { name: 'Score Watcher',       mauPct: 15, ctr: 14, completion: 40, approval: 7, commission: 1800, cardType: 'Score-matched' },
+    { name: 'FD Holder',           mauPct: 10, ctr: 10, completion: 40, approval: 7, commission: 1100, cardType: 'Secured FD-backed' },
+    { name: 'Generic / No Signal', mauPct: 30, ctr: 6,  completion: 40, approval: 7, commission: 900,  cardType: 'Entry-level LTF' },
+  ],
+  // Seasonality (Jan–Dec) — from Excel v3
+  seasonality: [0.85, 1.20, 1.20, 1.20, 1.20, 0.80, 0.80, 1.40, 2.00, 2.00, 1.50, 1.20],
+  _scenario: 'conservative',
 };
 
 // ─── P1 funnel state ──────────────────────────────────────────────────────────
@@ -584,32 +622,89 @@ function renderP1(phone, cards) {
 }
 
 function renderP1_Home(phone, cards) {
+  if (!('bannerIdx' in p1State)) p1State.bannerIdx = 0;
+  const featuredCards = (cards && cards.length) ? cards.slice(0, 4) : [];
+
+  const bannerSlides = [
+    // Slide 0 — existing MobiKwik IPL promo
+    `<div style="width:100%;flex-shrink:0;height:180px;position:relative;overflow:hidden;background:radial-gradient(ellipse 60% 80% at 50% 100%,#1E1B4B 0%,#1E40AF 45%,#0055D4 75%)">
+      <div style="position:absolute;left:0;bottom:0;width:120px;height:160px;background:radial-gradient(ellipse at bottom left,rgba(255,255,255,0.35),transparent 60%)"></div>
+      <div style="position:absolute;right:0;bottom:0;width:120px;height:160px;background:radial-gradient(ellipse at bottom right,rgba(255,255,255,0.35),transparent 60%)"></div>
+      <div style="position:absolute;top:14px;left:0;right:0;text-align:center;color:#fff;z-index:3">
+        <div style="font-size:8px;font-weight:700;letter-spacing:0.12em;opacity:0.75;margin-bottom:4px">MOBIKWIK PERSONAL LOAN</div>
+        <div style="font-size:26px;font-weight:900;color:#FCD34D;font-style:italic;letter-spacing:-0.5px;line-height:1.05;text-shadow:0 2px 6px rgba(0,0,0,0.3)">Up to ₹15 Lakh<span style="font-size:12px;vertical-align:super">*</span></div>
+        <button style="margin-top:10px;background:#fff;color:#1F2937;font-weight:800;font-size:13px;padding:8px 28px;border-radius:99px;border:none;cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,0.25)">Apply Now</button>
+      </div>
+      <div style="position:absolute;bottom:0;left:0;right:0;height:80px;display:flex;align-items:flex-end;justify-content:center;font-size:52px;line-height:1;filter:drop-shadow(0 -2px 8px rgba(0,0,0,0.4))">
+        <span style="transform:translateY(8px)">🏏</span><span style="font-size:64px">🏏</span><span style="transform:translateY(8px)">🏏</span>
+      </div>
+      <div style="position:absolute;bottom:4px;right:8px;font-size:7px;color:rgba(255,255,255,0.6)">*T&C Apply</div>
+    </div>`,
+
+    // Slide 1 — existing MobiKwik bill-pay cashback promo
+    `<div style="width:100%;flex-shrink:0;height:180px;position:relative;overflow:hidden;background:linear-gradient(135deg,#065F46 0%,#047857 50%,#059669 100%)">
+      <div style="position:absolute;right:-20px;top:-20px;width:120px;height:120px;background:rgba(255,255,255,0.06);border-radius:50%"></div>
+      <div style="position:absolute;left:-10px;bottom:-10px;width:100px;height:100px;background:rgba(255,255,255,0.05);border-radius:50%"></div>
+      <div style="position:absolute;inset:0;display:flex;flex-direction:column;justify-content:center;padding:20px 18px;color:#fff">
+        <div style="font-size:8px;font-weight:700;letter-spacing:0.12em;opacity:0.75;margin-bottom:6px">MOBIKWIK WALLET OFFER</div>
+        <div style="font-size:22px;font-weight:900;line-height:1.15;margin-bottom:8px">5% Cashback<br>on Bill Payments</div>
+        <div style="font-size:10px;opacity:0.85;margin-bottom:12px">Electricity · DTH · Mobile · Gas</div>
+        <button style="align-self:flex-start;background:#FCD34D;color:#1F2937;font-weight:800;font-size:11px;padding:7px 18px;border-radius:99px;border:none;cursor:pointer">Activate Now</button>
+      </div>
+      <div style="position:absolute;right:16px;top:50%;transform:translateY(-50%);font-size:52px">💡</div>
+    </div>`,
+
+    // Slide 2 — GC Trending Cards placement
+    `<div id="p1GCSlot" class="gc-slot-tappable" style="width:100%;flex-shrink:0;height:180px;position:relative;overflow:hidden;background:linear-gradient(135deg,#003FA3 0%,#0055D4 60%,#1D4ED8 100%);cursor:pointer;animation:p1Pulse 2.4s ease-in-out infinite">
+      <div style="position:absolute;right:-20px;top:-20px;width:100px;height:100px;background:rgba(255,255,255,0.07);border-radius:50%"></div>
+      <div style="position:absolute;inset:0;padding:14px 14px 10px;display:flex;flex-direction:column;justify-content:space-between">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start">
+          <div>
+            <div style="font-size:7px;font-weight:500;opacity:0.5;letter-spacing:0.06em;margin-bottom:3px">POWERED BY GREAT.CARDS</div>
+            <div style="font-size:14px;font-weight:800;color:#fff;line-height:1.25">${state.hookOverride || '✨ Trending Cards — matched for you'}</div>
+          </div>
+          <div style="background:#FCD34D;color:#1F2937;font-size:8px;font-weight:900;padding:3px 8px;border-radius:99px;white-space:nowrap;flex-shrink:0;margin-left:8px;box-shadow:0 2px 6px rgba(0,0,0,0.2)">↗ TAP</div>
+        </div>
+        <div style="display:flex;gap:7px;overflow-x:auto;scrollbar-width:none;padding-bottom:2px">
+          ${featuredCards.length
+            ? featuredCards.map(c => {
+                const bl = state.bankLogoMap[c.bankId];
+                return `<div style="flex-shrink:0;width:90px;height:56px;border-radius:9px;background:linear-gradient(135deg,${c.gradient||'#1E3A8A,#2563EB'});position:relative;overflow:hidden;box-shadow:0 2px 6px rgba(0,0,0,0.3)">
+                  ${bl ? `<img src="${bl}" style="position:absolute;top:4px;left:5px;height:9px;max-width:32px;object-fit:contain;background:rgba(255,255,255,0.85);border-radius:2px;padding:1px 2px" onerror="this.style.display='none'">` : `<div style="position:absolute;top:4px;left:5px;font-size:7px;font-weight:800;color:rgba(255,255,255,0.75);text-transform:uppercase">${esc((c.bank||'').split(' ')[0])}</div>`}
+                  <div style="position:absolute;bottom:4px;left:5px;right:5px;font-size:7px;font-weight:700;color:rgba(255,255,255,0.95);line-height:1.2;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical">${esc(c.name)}</div>
+                </div>`;
+              }).join('')
+            : [1,2,3].map(i => `<div style="flex-shrink:0;width:90px;height:56px;border-radius:9px;background:rgba(255,255,255,0.1);animation:p1Pulse 1.8s ease-in-out ${i*0.3}s infinite"></div>`).join('')}
+          <div style="flex-shrink:0;width:56px;height:56px;border-radius:9px;border:1.5px dashed rgba(255,255,255,0.35);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px">
+            <span class="material-symbols-outlined" style="font-size:16px;color:rgba(255,255,255,0.6)">arrow_forward</span>
+            <div style="font-size:7px;font-weight:700;color:rgba(255,255,255,0.6)">All</div>
+          </div>
+        </div>
+        <div style="font-size:8px;opacity:0.6;color:#fff">100+ cards · No bureau pull · ₹0 to apply</div>
+      </div>
+    </div>`,
+  ];
+
   phone.innerHTML = `
     <div style="height:100%;background:#0055D4;display:flex;flex-direction:column;overflow:hidden">
       ${mwTopBar()}
       <div style="flex:1;overflow-y:auto;padding:0 0 80px;background:#0055D4">
-        <!-- IPL hero — full bleed, dark stadium gradient, fireworks, players, big yellow headline -->
-        <div style="position:relative;height:230px;color:#fff;overflow:hidden;background:
-            radial-gradient(ellipse 60% 80% at 50% 100%, #1E1B4B 0%, #1E40AF 45%, #0055D4 75%);">
-          <!-- stadium light glow -->
-          <div style="position:absolute;left:0;bottom:0;width:120px;height:160px;background:radial-gradient(ellipse at bottom left, rgba(255,255,255,0.35), transparent 60%)"></div>
-          <div style="position:absolute;right:0;bottom:0;width:120px;height:160px;background:radial-gradient(ellipse at bottom right, rgba(255,255,255,0.35), transparent 60%)"></div>
-          <!-- fireworks (CSS sparkle dots) -->
-          <div style="position:absolute;top:18px;left:24px;font-size:18px;color:#FCD34D;text-shadow:0 0 6px #FCD34D">✦ ✦</div>
-          <div style="position:absolute;top:34px;left:60px;font-size:11px;color:#FCD34D;opacity:0.9">· ✦ ·</div>
-          <div style="position:absolute;top:18px;right:24px;font-size:18px;color:#FCD34D;text-shadow:0 0 6px #FCD34D">✦ ✦</div>
-          <div style="position:absolute;top:34px;right:60px;font-size:11px;color:#FCD34D;opacity:0.9">· ✦ ·</div>
-          <!-- headline -->
-          <div style="position:absolute;top:14px;left:0;right:0;text-align:center;z-index:3">
-            <div style="font-size:30px;font-weight:900;color:#FCD34D;font-style:italic;letter-spacing:-0.5px;line-height:1.05;text-shadow:0 2px 6px rgba(0,0,0,0.3)">Up to ₹15 Lakh<span style="font-size:14px;vertical-align:super">*</span></div>
-            <button style="margin-top:14px;background:#fff;color:#1F2937;font-weight:800;font-size:15px;padding:11px 32px;border-radius:99px;border:none;cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,0.25)">Apply Now</button>
+
+        <!-- ── Banner Carousel ── -->
+        <div style="position:relative;overflow:hidden;background:#0055D4">
+          <div id="p1BannerTrack" style="display:flex;transition:transform 0.35s ease;transform:translateX(-${p1State.bannerIdx * 100}%)">
+            ${bannerSlides.join('')}
           </div>
-          <!-- "players" silhouette row — emoji approximation -->
-          <div style="position:absolute;bottom:0;left:0;right:0;height:96px;display:flex;align-items:flex-end;justify-content:center;gap:0;font-size:64px;line-height:1;filter:drop-shadow(0 -2px 8px rgba(0,0,0,0.4))">
-            <span style="transform:translateY(8px)">🏏</span><span style="font-size:78px">🏏</span><span style="transform:translateY(8px)">🏏</span>
+          <!-- dots -->
+          <div style="position:absolute;bottom:8px;left:50%;transform:translateX(-50%);display:flex;gap:5px;z-index:10">
+            ${[0,1,2].map(i => `<div id="p1Dot${i}" style="width:${i===p1State.bannerIdx?18:6}px;height:6px;border-radius:3px;background:${i===p1State.bannerIdx?'#FCD34D':'rgba(255,255,255,0.4)'};transition:all 0.25s ease"></div>`).join('')}
           </div>
-          <div style="position:absolute;bottom:4px;right:8px;font-size:7px;opacity:0.7">*T&C Apply</div>
+          <!-- arrows -->
+          <button id="p1BannerPrev" style="position:absolute;left:8px;top:50%;transform:translateY(-50%);width:26px;height:26px;border-radius:50%;border:none;background:rgba(0,0,0,0.3);color:#fff;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;opacity:${p1State.bannerIdx===0?0.3:0.85};z-index:10">&#8249;</button>
+          <button id="p1BannerNext" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);width:26px;height:26px;border-radius:50%;border:none;background:rgba(0,0,0,0.3);color:#fff;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;opacity:${p1State.bannerIdx===2?0.3:0.85};z-index:10">&#8250;</button>
         </div>
+        <!-- ── end banner carousel ── -->
+
         <!-- White rounded sheet that contains the rest of the content (matches Media 13) -->
         <div style="background:#F3F4F6;border-top-left-radius:24px;border-top-right-radius:24px;margin-top:-14px;padding-top:14px;position:relative;z-index:2">
         <!-- Pay quick row card -->
@@ -665,30 +760,35 @@ function renderP1_Home(phone, cards) {
             </div>`).join('')}
           </div>
         </div>
-        <!-- GC slot — pulsing CTA card (placed last, like Media 13's home strip) -->
-        <div id="p1GCSlot" class="gc-slot-tappable" style="margin:0 14px 14px;background:linear-gradient(135deg,#0055D4,#0C35BB);border-radius:14px;padding:14px 16px;color:#fff;cursor:pointer;position:relative;overflow:hidden;animation:p1Pulse 2.4s ease-in-out infinite">
-          <div style="position:absolute;right:-12px;top:-12px;width:80px;height:80px;background:rgba(255,255,255,0.08);border-radius:50%"></div>
-          <div style="position:absolute;right:30px;bottom:-10px;width:50px;height:50px;background:rgba(252,211,77,0.2);border-radius:50%"></div>
-          ${state.hookOverride
-            ? `<div style="position:absolute;top:8px;right:10px;background:#FCD34D;color:#1F2937;font-size:9px;font-weight:900;padding:3px 8px;border-radius:99px;letter-spacing:0.06em;z-index:2">H3 · HERE</div>`
-            : `<div style="position:absolute;top:8px;right:10px;background:#FCD34D;color:#1F2937;font-size:9px;font-weight:900;padding:3px 8px;border-radius:99px;letter-spacing:0.06em;z-index:2;box-shadow:0 2px 6px rgba(0,0,0,0.18)">↗ TAP</div>`}
-          <div style="display:flex;justify-content:space-between;align-items:flex-start;position:relative">
-            <div style="flex:1">
-              <div style="font-size:8px;font-weight:500;letter-spacing:0.04em;opacity:0.6;margin-bottom:4px">Powered by Great.Cards</div>
-              <div style="font-size:14px;font-weight:800;line-height:1.3;margin-bottom:6px">${state.hookOverride || 'Find the credit card that pays back the most on your spend'}</div>
-              <div style="font-size:10px;opacity:0.85">100+ cards · Pre-checked · ₹0 to apply</div>
-            </div>
-            <div style="font-size:28px;margin-left:8px">💳</div>
-          </div>
-          <div style="margin-top:10px;display:inline-flex;align-items:center;gap:6px;background:#FCD34D;color:#1F2937;font-size:11px;font-weight:800;padding:6px 14px;border-radius:99px">${state.hookOverride ? 'See matched cards' : 'Match my spend'} <span class="material-symbols-outlined" style="font-size:14px">arrow_forward</span></div>
-        </div>
         </div><!-- /sheet -->
       </div>
       ${mwBottomNavReal('home')}
     </div>`;
 
   ensureStyle('p1Pulse-kf','@keyframes p1Pulse{0%,100%{box-shadow:0 0 0 0 rgba(252,211,77,0.55),0 4px 12px rgba(0,85,212,0.3)}50%{box-shadow:0 0 0 6px rgba(252,211,77,0),0 6px 18px rgba(0,85,212,0.45)}}');
-  document.getElementById('p1GCSlot').addEventListener('click', () => {
+
+  function p1BannerGo(idx) {
+    p1State.bannerIdx = Math.max(0, Math.min(2, idx));
+    const track = document.getElementById('p1BannerTrack');
+    if (track) track.style.transform = `translateX(-${p1State.bannerIdx * 100}%)`;
+    [0,1,2].forEach(i => {
+      const dot = document.getElementById(`p1Dot${i}`);
+      if (dot) {
+        dot.style.width   = i === p1State.bannerIdx ? '18px' : '6px';
+        dot.style.background = i === p1State.bannerIdx ? '#FCD34D' : 'rgba(255,255,255,0.4)';
+      }
+    });
+    document.getElementById('p1BannerPrev').style.opacity = p1State.bannerIdx === 0 ? '0.3' : '0.85';
+    document.getElementById('p1BannerNext').style.opacity = p1State.bannerIdx === 2 ? '0.3' : '0.85';
+    renderCommentary();
+  }
+
+  document.getElementById('p1BannerPrev').addEventListener('click', e => { e.stopPropagation(); p1BannerGo(p1State.bannerIdx - 1); });
+  document.getElementById('p1BannerNext').addEventListener('click', e => { e.stopPropagation(); p1BannerGo(p1State.bannerIdx + 1); });
+
+  // GC slide tap → open funnel
+  const gcSlot = document.getElementById('p1GCSlot');
+  if (gcSlot) gcSlot.addEventListener('click', () => {
     state.placementClicked = true;
     p1State.step = 1;
     renderP1_Step1(phone);
@@ -1458,6 +1558,27 @@ function renderPlacementPhone(phone) {
   const p = PLACEMENTS.find(x => x.id === state.placement);
   if (!p) return;
 
+  if (state.zip === 'Active' && state.tab === 'placements') {
+    phone.innerHTML = `
+      <div style="height:100%;background:#F9F9FF;display:flex;flex-direction:column;overflow:hidden">
+        ${mwHeader()}
+        <div style="flex:1;overflow-y:auto;padding:20px 16px 70px">
+          <div style="background:#fff;border-radius:16px;padding:24px 20px;box-shadow:0 1px 4px rgba(0,0,0,0.05);text-align:center">
+            <div style="font-size:34px;margin-bottom:14px">🛡️</div>
+            <div style="font-size:16px;font-weight:900;color:#141B2B;margin-bottom:10px;line-height:1.35">We don't touch active Zip users.</div>
+            <div style="font-size:13px;color:#374151;line-height:1.65;margin-bottom:16px">A user repaying a Zip EMI will never see a Great.Cards placement — no banners, no tiles, no notifications. Mobikwik's active lending relationships are completely off-limits.</div>
+            <div style="background:#F0FDF4;border:1px solid #BBF7D0;border-radius:12px;padding:14px 16px;text-align:left">
+              <div style="font-size:12px;font-weight:800;color:#15803D;margin-bottom:5px">Suppression covers all surfaces</div>
+              <div style="font-size:12px;color:#166534;line-height:1.65">In-app placements · Push notifications · Marketing hooks — all paused until the final EMI clears. The Zip book stays fully protected.</div>
+            </div>
+          </div>
+          <div style="margin-top:12px;font-size:11px;color:#94A3B8;text-align:center">Switch Zip EMI status to <b>Graduated</b> or <b>Never used</b> to see placements.</div>
+        </div>
+        ${mwBottomNav()}
+      </div>`;
+    return;
+  }
+
   if (state.lens === 'NTC') {
     phone.innerHTML = `
       <div style="height:100%;background:#F9F9FF;display:flex;flex-direction:column;overflow:hidden">
@@ -1473,22 +1594,6 @@ function renderPlacementPhone(phone) {
             <button style="background:#F9DA00;color:#111827;font-weight:900;font-size:13px;padding:12px 24px;border-radius:10px;border:none;cursor:pointer">See Mobikwik First Card →</button>
           </div>
           <div style="font-size:11px;color:#94A3B8;text-align:center;padding:8px">NTC users routed to First Card only. GC catalogue excluded. Mobikwik keeps 100% of commission.</div>
-        </div>
-        ${mwBottomNav()}
-      </div>`;
-    return;
-  }
-
-  if (state.zip === 'Active' && state.tab === 'placements') {
-    phone.innerHTML = `
-      <div style="height:100%;background:#F9F9FF;display:flex;flex-direction:column;overflow:hidden">
-        ${mwHeader()}
-        <div style="flex:1;overflow-y:auto;padding:20px 16px 70px">
-          <div style="background:#fff;border-radius:16px;padding:20px;text-align:center;box-shadow:0 1px 4px rgba(0,0,0,0.05)">
-            <span class="material-symbols-outlined" style="font-size:36px;color:#D97706;margin-bottom:10px;display:block">warning</span>
-            <div style="font-size:15px;font-weight:800;color:#141B2B;margin-bottom:8px">Zip EMI active</div>
-            <div style="font-size:12px;color:#64748b;line-height:1.5">Credit card placements are paused while a Zip repayment journey is active. Resumes after final payment.</div>
-          </div>
         </div>
         ${mwBottomNav()}
       </div>`;
@@ -1517,8 +1622,8 @@ function renderP_PushLanding(phone, cards) {
   const card = cards[0];
   const cohortTrigger = {
     'FD Pledge':     { line: 'You have an active FD with MobiKwik', body: 'Your ₹50,000 FD just unlocked an FD-backed credit card. Same limit, no score check, instant approval.' },
-    'EMI Grad':      { line: 'You paid your 3rd Zip EMI on time',   body: 'Banks notice exactly this. Here\'s the card your repayment record just unlocked.' },
-    'Bill-Pay':      { line: 'You paid ₹8,400 in bills this month',  body: 'This card returns ₹420 of that every month. ₹0 annual fee, lifetime free.' },
+    'EMI Graduate':     { line: 'You paid your 3rd Zip EMI on time',   body: 'Banks notice exactly this. Here\'s the card your repayment record just unlocked.' },
+    'Bill-Pay Regular': { line: 'You paid ₹8,400 in bills this month',  body: 'This card returns ₹420 of that every month. ₹0 annual fee, lifetime free.' },
     'Spend-Backed':  { line: 'Your Mobikwik cashflow qualifies you', body: 'Lens AA scored your spend pattern. This card is built for exactly how you transact.' },
     'Score Watcher': { line: 'Your CIBIL score crossed 720',         body: 'Three cards you couldn\'t get last month are now live. Highest approval rate at your score.' },
     'NTC':           { line: 'No credit history yet — that\'s fine', body: 'MobiKwik First Card needs no score. Full credit on your wallet activity. Issued by SBM Bank.' },
@@ -1562,10 +1667,14 @@ function renderNotificationPhone(phone) {
   if (state.zip === 'Active') {
     phone.innerHTML = `
       <div style="height:100%;background:#1A1A2E;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:32px">
-        <div style="background:rgba(255,255,255,0.06);border-radius:20px;padding:20px 24px;width:100%;max-width:300px">
-          <div style="font-size:11px;color:#64748b;margin-bottom:10px">No notification</div>
-          <div style="font-size:14px;font-weight:700;color:#E2E8F0;margin-bottom:6px">Active Zip repayment</div>
-          <div style="font-size:12px;color:#94A3B8;line-height:1.5">No credit-card touch while user is repaying Zip. Suppression rule active.</div>
+        <div style="background:rgba(255,255,255,0.07);border-radius:20px;padding:24px;width:100%;max-width:300px;text-align:center">
+          <div style="font-size:28px;margin-bottom:12px">🛡️</div>
+          <div style="font-size:15px;font-weight:900;color:#F1F5F9;margin-bottom:10px;line-height:1.35">Zero notifications sent.</div>
+          <div style="font-size:12px;color:#94A3B8;line-height:1.65;margin-bottom:14px">This user has an active Zip repayment. We don't send a single credit-card message — no push, no WhatsApp — until the journey is complete.</div>
+          <div style="background:rgba(21,128,61,0.18);border:1px solid rgba(21,128,61,0.35);border-radius:10px;padding:12px 14px;text-align:left">
+            <div style="font-size:11px;font-weight:800;color:#4ADE80;margin-bottom:4px">Why this matters</div>
+            <div style="font-size:11px;color:#86EFAC;line-height:1.6">Mobikwik's active user base is never touched. The notification arc resumes only after final EMI payment.</div>
+          </div>
         </div>
       </div>`;
     return;
@@ -1683,6 +1792,21 @@ function renderP_Referral(phone, cards) {
 }
 
 function renderHookPhone(phone) {
+  if (state.zip === 'Active') {
+    phone.innerHTML = `
+      <div style="height:100%;background:#1A1A2E;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:32px">
+        <div style="background:rgba(255,255,255,0.07);border-radius:20px;padding:24px;width:100%;max-width:300px;text-align:center">
+          <div style="font-size:28px;margin-bottom:12px">🛡️</div>
+          <div style="font-size:15px;font-weight:900;color:#F1F5F9;margin-bottom:10px;line-height:1.35">No hooks fire here.</div>
+          <div style="font-size:12px;color:#94A3B8;line-height:1.65;margin-bottom:14px">Every marketing hook — score-unlock, bill-pay cashback, referral ladder — is suppressed while a Zip repayment is active. We don't run any credit nudge on this user.</div>
+          <div style="background:rgba(21,128,61,0.18);border:1px solid rgba(21,128,61,0.35);border-radius:10px;padding:12px 14px;text-align:left">
+            <div style="font-size:11px;font-weight:800;color:#4ADE80;margin-bottom:4px">Mobikwik's active base stays intact</div>
+            <div style="font-size:11px;color:#86EFAC;line-height:1.6">Hooks resume automatically once the EMI journey completes — no configuration needed.</div>
+          </div>
+        </div>
+      </div>`;
+    return;
+  }
   const h = hooks[state.hook];
   const cards = getCards(PLACEMENTS[0]);
   // Set hookOverride so each P-renderer shows the hook copy in its GC slot
@@ -1714,6 +1838,22 @@ function renderLeftList() {
   );
   const el = document.getElementById('leftList');
   if (state.tab === 'placements') {
+    if (state.zip === 'Active') {
+      el.innerHTML = `
+        <div class="pl-head">Placements · suppressed</div>
+        <div style="font-size:12px;color:#64748b;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:10px;padding:14px 16px;line-height:1.65">
+          🛡️ All 8 surfaces paused.<br>No placement fires during an active Zip repayment.
+        </div>`;
+      return;
+    }
+    if (state.lens === 'NTC') {
+      el.innerHTML = `
+        <div class="pl-head">NTC · First Card only</div>
+        <div style="font-size:12px;color:#64748b;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:10px;padding:14px 16px;line-height:1.65">
+          🎯 NTC users bypass all GC placements.<br>They route to SBM MobiKwik First Card.<br><br>Switch <b>User type</b> to a scored cohort to see the 8 GC surfaces.
+        </div>`;
+      return;
+    }
     el.innerHTML = `
       <div class="pl-head">Placements · ${PLACEMENTS.length} touchpoints</div>
       <div style="font-size:11px;color:#0055D4;font-weight:700;background:#EEF2FF;border:1px dashed #C7D2FE;border-radius:8px;padding:8px 10px;margin:0 0 10px;display:flex;align-items:center;gap:6px"><span style="font-size:14px">👆</span> Tap any placement, then tap the yellow <span style="background:#FCD34D;color:#1F2937;font-size:9px;font-weight:900;padding:2px 6px;border-radius:99px;letter-spacing:0.06em">↗ TAP</span> tile inside the phone to open the GC catalogue.</div>
@@ -1758,14 +1898,83 @@ function renderCommentary() {
   if (!el) return;
 
   if (state.tab === 'placements') {
+    if (state.zip === 'Active') {
+      el.innerHTML = `
+        <div class="cm-eyebrow"><span class="cm-arrow">▸</span> Suppression active</div>
+        <h4>All 8 placements paused</h4>
+        <ul>
+          <li>Active Zip repayment = zero GC exposure. Every surface — banner, tile, card, push — is suppressed until the final EMI clears.</li>
+          <li>Switch <b>Zip EMI status</b> to <b>Graduated</b> or <b>Never used</b> to see any placement.</li>
+        </ul>`;
+      return;
+    }
+    if (state.lens === 'NTC') {
+      el.innerHTML = `
+        <div class="cm-eyebrow"><span class="cm-arrow">▸</span> NTC routing</div>
+        <h4>User type: No Credit History</h4>
+        <ul>
+          <li>NTC users never enter the GC catalogue. They route directly to <b>SBM MobiKwik First Card</b> — Mobikwik keeps 100% of that commission.</li>
+          <li>GC earns ₹0 on this segment. This is deliberate — the cannibalisation firewall keeps Mobikwik's co-brand revenue intact.</li>
+          <li>Switch <b>User type</b> to any scored cohort to see GC placements.</li>
+        </ul>`;
+      return;
+    }
     const p = PLACEMENTS.find(x => x.id === state.placement);
     if (!p || !p.commentary) return;
+
+    // Placement 1 has a banner carousel — commentary is per-slide
+    if (state.placement === 1 && !state.placementClicked) {
+      const bannerCommentary = [
+        {
+          title: 'Placement 1 · Existing MobiKwik banner — slide 1 of 3',
+          steps: [
+            'This is a standard MobiKwik promotional banner (personal loan offer). It lives at the top of the homepage and is always present.',
+            'The GC integration <b>does not remove or replace</b> any existing banner — it adds one slot into the same carousel.',
+            'Use the <b>arrows on the phone</b> or the dots to swipe to the next banner →',
+          ],
+        },
+        {
+          title: 'Placement 1 · Existing MobiKwik banner — slide 2 of 3',
+          steps: [
+            'Another native MobiKwik campaign (bill-pay cashback). Same carousel slot, same app chrome.',
+            'From a user\'s perspective this looks identical to any other promotional banner — the GC placement is native, not bolted on.',
+            'Swipe one more time → to reach the GC placement banner.',
+          ],
+        },
+        {
+          title: 'Placement 1 · <span class="cm-pulse">✨ GC Trending Cards</span> — slide 3 of 3',
+          steps: [
+            'This is the Great.Cards placement. Same format as slides 1 and 2 — fully native to the banner carousel.',
+            'Cards shown are <b>pre-matched</b> to the credit score + income + Lens cohort tag set in the top bar. No bureau pull at this stage.',
+            '<b>Tap the banner</b> on the phone to see the 4-step matched-cards funnel open inside the webview.',
+            'Switch <b>Lens cohort</b> above → the card faces in the banner update per cohort in real time.',
+          ],
+        },
+      ];
+      const bc = bannerCommentary[p1State.bannerIdx] || bannerCommentary[0];
+      el.innerHTML = `
+        <div class="cm-eyebrow"><span class="cm-arrow">▸</span> Try this</div>
+        <h4>${bc.title}</h4>
+        <ol>${bc.steps.map(s => `<li>${s}</li>`).join('')}</ol>`;
+      return;
+    }
+
     const c = p.commentary;
     el.innerHTML = `
       <div class="cm-eyebrow"><span class="cm-arrow">▸</span> Try this</div>
       <h4>${esc(c.title)}</h4>
       <ol>${c.steps.map(s => `<li>${s}</li>`).join('')}</ol>`;
   } else if (state.tab === 'notifications') {
+    if (state.zip === 'Active') {
+      el.innerHTML = `
+        <div class="cm-eyebrow"><span class="cm-arrow">▸</span> Suppression active</div>
+        <h4>Zero notifications sent</h4>
+        <ul>
+          <li>Active Zip repayment = complete message silence across all cohorts. No push, no WhatsApp, regardless of day offset.</li>
+          <li>Switch <b>Zip EMI status</b> to see the notification arc for this cohort.</li>
+        </ul>`;
+      return;
+    }
     const n   = notifications[state.cohort] || notifications['Score Watcher'];
     const msg = n.days[state.day];
     const fireDays = Object.keys(n.days).map(Number);
@@ -1780,6 +1989,16 @@ function renderCommentary() {
         ${isNTC ? '<li>NTC cohort routes to <b>SBM MobiKwik First Card</b> only. GC catalogue excluded — Mobikwik keeps 100% of commission.</li>' : '<li>Switch the day chips below to walk the 30-day arc.</li>'}
       </ul>`;
   } else {
+    if (state.zip === 'Active') {
+      el.innerHTML = `
+        <div class="cm-eyebrow"><span class="cm-arrow">▸</span> Suppression active</div>
+        <h4>No hooks fire</h4>
+        <ul>
+          <li>Every hook trigger checks Zip status before firing. Active repayment = no nudge, no hook, no copy.</li>
+          <li>Switch <b>Zip EMI status</b> to see hooks in action.</li>
+        </ul>`;
+      return;
+    }
     const h = hooks[state.hook];
     el.innerHTML = `
       <div class="cm-eyebrow"><span class="cm-arrow">▸</span> Try this</div>
@@ -1813,6 +2032,96 @@ async function renderDemo() {
   renderPhone();
   renderCommentary();
 }
+
+// ─── Placement Carousel ───────────────────────────────────────────────────────
+(function initPlacementCarousel() {
+  const el = document.getElementById('placementCarousel');
+  if (!el) return;
+
+  const slides = PLACEMENTS.map((p, i) => ({
+    num:     String(p.id).padStart(2, '0'),
+    name:    p.name,
+    surface: p.surface,
+    img:     `/assets/screenshots/p${p.id}.jpg`,
+    placement: p.id,
+  }));
+
+  let current = 0;
+  let timer = null;
+
+  function build() {
+    el.innerHTML = `
+      <div class="pc-wrap">
+        <div class="pc-left">
+          <p class="eyebrow" style="color:#93C5FD;margin-bottom:8px">8 In-App Placement Surfaces</p>
+          <h2 class="pc-headline">What the integration<br>looks like inside MobiKwik</h2>
+          <p class="pc-sub">Every placement fires from existing user intent — no new screens, no backend changes.</p>
+          <div class="pc-meta" id="pcMeta"></div>
+          <a href="/demo" data-link class="button primary pc-cta-btn" id="pcCta">See it live in the demo →</a>
+          <div class="pc-dots" id="pcDots">
+            ${slides.map((_, i) => `<button class="pc-dot${i===0?' active':''}" data-pcdot="${i}"></button>`).join('')}
+          </div>
+        </div>
+        <div class="pc-right">
+          <button class="pc-arrow pc-prev" id="pcPrev">&#8249;</button>
+          <div class="pc-phone-shell">
+            <div class="pc-phone-notch"></div>
+            <div class="pc-slides-track" id="pcTrack">
+              ${slides.map((s, i) => `
+                <div class="pc-slide${i===0?' active':''}">
+                  <img src="${s.img}" class="pc-img" onerror="this.style.display='none'">
+                </div>`).join('')}
+            </div>
+          </div>
+          <button class="pc-arrow pc-next" id="pcNext">&#8250;</button>
+        </div>
+      </div>`;
+
+    updateMeta();
+    attachEvents();
+    startTimer();
+  }
+
+  function updateMeta() {
+    const s = slides[current];
+    const meta = document.getElementById('pcMeta');
+    if (meta) meta.innerHTML = `
+      <div class="pc-num-badge">${s.num}</div>
+      <div class="pc-name">${esc(s.name)}</div>
+      <div class="pc-surface-txt">${esc(s.surface)}</div>`;
+    document.querySelectorAll('.pc-dot').forEach((d, i) => d.classList.toggle('active', i === current));
+    document.querySelectorAll('.pc-slide').forEach((d, i) => d.classList.toggle('active', i === current));
+    const cta = document.getElementById('pcCta');
+    if (cta) cta.dataset.placement = s.placement;
+  }
+
+  function go(n) {
+    current = (n + slides.length) % slides.length;
+    updateMeta();
+    resetTimer();
+  }
+
+  function startTimer() { timer = setInterval(() => go(current + 1), 4000); }
+  function resetTimer()  { clearInterval(timer); startTimer(); }
+
+  function attachEvents() {
+    document.getElementById('pcPrev')?.addEventListener('click', e => { e.stopPropagation(); go(current - 1); });
+    document.getElementById('pcNext')?.addEventListener('click', e => { e.stopPropagation(); go(current + 1); });
+    document.getElementById('pcDots')?.addEventListener('click', e => {
+      const dot = e.target.closest('[data-pcdot]');
+      if (dot) go(Number(dot.dataset.pcdot));
+    });
+    document.getElementById('pcCta')?.addEventListener('click', e => {
+      e.preventDefault();
+      const pid = Number(e.currentTarget.dataset.placement);
+      if (pid) { state.placement = pid; p1State = { step: 0, cats: [], spendByCat: {} }; }
+      history.pushState({}, '', '/demo');
+      route();
+    });
+  }
+
+  build();
+})();
 
 // ─── Homepage formula ─────────────────────────────────────────────────────────
 function renderHome() {
@@ -1853,169 +2162,782 @@ function renderHome() {
 }
 
 // ─── Revenue model ────────────────────────────────────────────────────────────
+function revDerived() {
+  const r  = revenue;
+  const s1 = r.mau;
+  const s2 = s1 * r.cohortPct    / 100;
+  const s3 = s2 * r.visibilityPct / 100;
+  const s4 = s3 * r.ctrPct        / 100;
+  const s5 = s4 * r.completionPct / 100;
+  const s6 = s5 * r.approvalPct   / 100;
+  const cardsPerMonth = Math.round(s6);
+
+  const cohortRows = r.cohorts.map(c => {
+    const mauAbs = Math.round(s2 * c.mauPct / 100);
+    const imp    = Math.round(mauAbs * r.visibilityPct / 100);
+    const cards  = Math.round(imp * c.ctr / 100 * c.completion / 100 * c.approval / 100);
+    return { ...c, mauAbs, imp, cards };
+  });
+  const totalCohortCards = cohortRows.reduce((s, c) => s + c.cards, 0);
+  const blendedComm = totalCohortCards > 0
+    ? Math.round(cohortRows.reduce((s, c) => s + c.cards * c.commission, 0) / totalCohortCards)
+    : 1400;
+  const mauPctSum    = r.cohorts.reduce((s, c) => s + c.mauPct, 0);
+  const reconcilePct = cardsPerMonth > 0 ? Math.abs(totalCohortCards - cardsPerMonth) / cardsPerMonth * 100 : 0;
+
+  const fixedMo      = r.team + r.infra;
+  const varPerCard   = r.ops + r.hook;
+  const monthlyGross = cardsPerMonth * blendedComm;
+  const annualGross  = monthlyGross * 12;
+  const gcShare      = r.split / 100;
+  const gcRevMo      = monthlyGross * gcShare;
+  const gcRevYr      = gcRevMo * 12;
+  const mwRevYr      = monthlyGross * (1 - gcShare) * 12;
+  const gcVarMo      = cardsPerMonth * varPerCard;
+  const gcNetMo      = gcRevMo - fixedMo - gcVarMo;
+  const gcNetYr      = gcNetMo * 12;
+  const margin       = gcRevYr > 0 ? Math.round(gcNetYr / gcRevYr * 100) : 0;
+
+  const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const mom = r.seasonality.map((idx, i) => {
+    const cards  = Math.round(cardsPerMonth * idx);
+    const gross  = cards * blendedComm;
+    const gcRev  = Math.round(gross * gcShare);
+    const mwRev  = Math.round(gross * (1 - gcShare));
+    const gcCost = cards * varPerCard;
+    const gcNet  = gcRev - gcCost;
+    return { month: MONTHS[i], idx, cards, gross, gcRev, mwRev, gcCost, gcNet };
+  });
+  const momTotals = {
+    cards : mom.reduce((s, m) => s + m.cards,  0),
+    gcRev : mom.reduce((s, m) => s + m.gcRev,  0),
+    mwRev : mom.reduce((s, m) => s + m.mwRev,  0),
+    gcCost: mom.reduce((s, m) => s + m.gcCost, 0),
+    gcNet : mom.reduce((s, m) => s + m.gcNet,  0),
+  };
+
+  const splitRows = [
+    { label: '80 / 20', gcPct: 20 },
+    { label: '70 / 30', gcPct: 30 },
+    { label: '60 / 40', gcPct: 40 },
+    { label: '50 / 50', gcPct: 50 },
+  ].map(s => {
+    const gcRevCard = Math.round(blendedComm * s.gcPct / 100);
+    const netCard   = gcRevCard - varPerCard;
+    const be        = netCard > 0 ? Math.round(fixedMo / netCard) : Infinity;
+    const gcAnnRev  = cardsPerMonth * 12 * gcRevCard;
+    const gcAnnNet  = gcAnnRev - fixedMo * 12 - cardsPerMonth * 12 * varPerCard;
+    const mwAnnRev  = cardsPerMonth * 12 * Math.round(blendedComm * (100 - s.gcPct) / 100);
+    return { ...s, gcRevCard, netCard, be, gcAnnRev, gcAnnNet, mwAnnRev };
+  });
+
+  // ── Retargeting (drop-off recovery — 100% GC, no MW share) ──
+  const rtFormStarters = s5;
+  const rtApiStarters  = rtFormStarters * r.apiSplitPct  / 100;
+  const rtDropoffs     = rtApiStarters  * r.dropOffPct   / 100;
+  const rtCards        = Math.round(rtDropoffs * r.retargConvPct / 100);
+  const rtGrossMo      = rtCards * r.retargComm;
+  const rtBonusMo      = rtCards * r.retargBonus;
+  const rtNetMo        = rtGrossMo - rtBonusMo;
+  const rtGrossYr      = rtGrossMo * 12;
+  const rtBonusYr      = rtBonusMo * 12;
+  const rtNetYr        = rtNetMo  * 12;
+  const retarg         = { rtFormStarters, rtApiStarters, rtDropoffs, rtCards, rtGrossMo, rtBonusMo, rtNetMo, rtGrossYr, rtBonusYr, rtNetYr };
+
+  const totalNetYr  = gcNetYr + rtNetYr;
+  const totalNetMo  = gcNetMo + rtNetMo;
+  const totalMargin = (gcRevYr + rtGrossYr) > 0
+    ? Math.round(totalNetYr / (gcRevYr + rtGrossYr) * 100)
+    : 0;
+
+  const momRt = r.seasonality.map((idx, i) => {
+    const cards   = Math.round(rtCards * idx);
+    const gross   = cards * r.retargComm;
+    const bonus   = cards * r.retargBonus;
+    const net     = gross - bonus;
+    return { month: MONTHS[i], cards, gross, bonus, net };
+  });
+
+  return {
+    s1, s2, s3, s4, s5, s6, cardsPerMonth,
+    cohortRows, totalCohortCards, blendedComm, mauPctSum, reconcilePct,
+    fixedMo, varPerCard, monthlyGross, annualGross,
+    gcRevMo, gcRevYr, mwRevYr, gcVarMo, gcNetMo, gcNetYr, margin,
+    mom, momTotals, splitRows,
+    retarg, totalNetYr, totalNetMo, totalMargin, momRt,
+  };
+}
+
 function renderRevenue() {
   const el = document.getElementById('revenueModel');
   if (!el) return;
-
-  const shown    = revenue.mau * revenue.see / 100;
-  const clicks   = shown * revenue.click / 100;
-  const applies  = clicks * revenue.apply / 100;
-  const cards    = applies * revenue.approval / 100;
-  const monthly  = cards * revenue.commission;
-  const annual   = monthly * 12;
-  const gcGross  = annual * revenue.split / 100;
-  const mwGross  = annual - gcGross;
-  const fixed    = (revenue.team + revenue.infra) * 12;
-  const variable = cards * 12 * (revenue.caller + revenue.ops + revenue.hook);
-  const cost     = fixed + variable;
-  const net      = gcGross - cost;
-  const margin   = gcGross > 0 ? Math.round((net / gcGross) * 100) : 0;
-  const fixedMo  = revenue.team + revenue.infra;
-
-  // Determine active scenario
+  const d    = revDerived();
   const scen = revenue._scenario || 'conservative';
-
   el.innerHTML = `
+    ${rev_heroSummary(d)}
     <div class="rev-grid">
-      <!-- LEFT: input rail -->
-      <aside class="rev-left">
-        <div class="rev-card">
-          <p class="rev-card-eyebrow">Scenario</p>
-          <div class="rev-scenarios">
-            <button class="rev-scen ${scen==='conservative'?'is-on':''}" data-scenario="conservative">Conservative</button>
-            <button class="rev-scen ${scen==='realistic'?'is-on':''}" data-scenario="realistic">Realistic</button>
-            <button class="rev-scen ${scen==='aggressive'?'is-on':''}" data-scenario="aggressive">Aggressive</button>
-          </div>
-        </div>
-
-        <div class="rev-card">
-          <p class="rev-card-eyebrow">Funnel Inputs</p>
-
-          <p class="rev-group-label">Traffic</p>
-          ${slider('Mobikwik MAU',   'mau', revenue.mau,       500000, 5000000, 100000, fmt(revenue.mau))}
-          ${slider('% see placement','see', revenue.see,       10,     100,     1,      revenue.see+'%')}
-
-          <p class="rev-group-label">Conversion</p>
-          ${slider('Blended CTR',   'click',    revenue.click,    1,    15,   0.5, revenue.click+'%')}
-          ${slider('% apply',       'apply',    revenue.apply,    10,   50,   1,   revenue.apply+'%')}
-          ${slider('Bank approval', 'approval', revenue.approval, 5,    50,   0.5, revenue.approval+'%')}
-
-          <p class="rev-group-label">Monetization</p>
-          ${slider('Commission/card','commission', revenue.commission, 1000, 3500, 100, '₹'+fmt(revenue.commission))}
-        </div>
-
-        <div class="rev-card">
-          <p class="rev-card-eyebrow">Revenue Split (Mobikwik / GC)</p>
-          <div class="rev-split-row">
-            <button class="rev-split ${revenue.split===40?'is-on':''}" data-split="40">60 / 40</button>
-            <button class="rev-split ${revenue.split===30?'is-on':''}" data-split="30">70 / 30</button>
-            <button class="rev-split ${revenue.split===20?'is-on':''}" data-split="20">80 / 20</button>
-          </div>
-        </div>
-
-        <div class="rev-card">
-          <p class="rev-card-eyebrow">GC Fixed Costs / Month</p>
-          ${slider('Team + Infra', '_fixed', fixedMo, 200000, 2000000, 50000, '₹'+fmt(fixedMo))}
-          <p class="rev-card-eyebrow" style="margin-top:18px">Variable / card</p>
-          ${slider('Hook funding','hook', revenue.hook, 0, 600, 25, '₹'+fmt(revenue.hook))}
-          ${slider('Ops + caller','_var', (revenue.ops+revenue.caller), 0, 500, 10, '₹'+fmt(revenue.ops+revenue.caller))}
-        </div>
-      </aside>
-
-      <!-- RIGHT: dashboard -->
-      <section class="rev-right">
-        <p class="rev-pretitle">Revenue Funnel · adjust assumptions on the left</p>
-
-        <div class="rev-funnel-row">
-          <div class="rev-kpi">
-            <div class="rev-kpi-num">${fmt(revenue.mau)}</div>
-            <div class="rev-kpi-lbl">MOBIKWIK MAU</div>
-            <div class="rev-kpi-sub">monthly active users</div>
-          </div>
-          <div class="rev-funnel-arrow">→</div>
-          <div class="rev-kpi">
-            <div class="rev-kpi-num">${fmt(clicks)}</div>
-            <div class="rev-kpi-lbl">CLICKS / MONTH</div>
-            <div class="rev-kpi-sub">${revenue.click}% blended CTR</div>
-          </div>
-          <div class="rev-funnel-arrow">→</div>
-          <div class="rev-kpi">
-            <div class="rev-kpi-num">${fmt(cards)}</div>
-            <div class="rev-kpi-lbl">CARDS / MONTH</div>
-            <div class="rev-kpi-sub">${revenue.approval}% approval</div>
-          </div>
-        </div>
-
-        <div class="rev-hero-card">
-          <div class="rev-hero-top">
-            <span class="rev-hero-eyebrow">Gross Commission</span>
-            <span class="rev-hero-side">${money(monthly)} / month</span>
-          </div>
-          <div class="rev-hero-num">${money(annual)}<span class="rev-hero-unit">/ year</span></div>
-          <div class="rev-hero-foot">${fmt(cards*12)} cards / year · ₹${fmt(revenue.commission)}/card</div>
-        </div>
-
-        <div class="rev-split-cards">
-          <div class="rev-side-card">
-            <p class="rev-side-eyebrow">Mobikwik Revenue</p>
-            <p class="rev-side-meta">${100-revenue.split}% share</p>
-            <div class="rev-side-num">${money(mwGross)}</div>
-            <p class="rev-side-foot">per year</p>
-          </div>
-          <div class="rev-side-card gc-accent">
-            <p class="rev-side-eyebrow">GC Revenue</p>
-            <p class="rev-side-meta">${revenue.split}% share</p>
-            <div class="rev-side-num">${money(gcGross)}</div>
-            <p class="rev-side-foot">per year</p>
-          </div>
-        </div>
-
-        <div class="rev-pl">
-          <p class="rev-pl-title">GC P&amp;L</p>
-          <div class="rev-pl-row">
-            <span>Gross Revenue (GC share)</span>
-            <span class="rev-pl-mo">${money(gcGross/12)} / mo</span>
-            <span class="rev-pl-yr">${money(gcGross)} / yr</span>
-          </div>
-          <div class="rev-pl-row">
-            <span>Fixed Costs</span>
-            <span class="rev-pl-mo">${money(fixed/12)} / mo</span>
-            <span class="rev-pl-yr">${money(fixed)} / yr</span>
-          </div>
-          <div class="rev-pl-row">
-            <span>Variable Costs</span>
-            <span class="rev-pl-mo">${money(variable/12)} / mo</span>
-            <span class="rev-pl-yr">${money(variable)} / yr</span>
-          </div>
-          <div class="rev-pl-row rev-pl-net ${net>=0?'is-pos':'is-neg'}">
-            <span><b>Net Profit</b></span>
-            <span class="rev-pl-mo"><b>${money(net/12)} / mo</b></span>
-            <span class="rev-pl-yr"><b>${money(net)} / yr</b></span>
-          </div>
-        </div>
-
-        <div class="rev-status ${net>=0?'is-good':'is-bad'}">
-          <span class="rev-status-icon">${net>=0?'✓':'⚠️'}</span>
-          <span>${net>=0
-            ? `Unit positive · GC margin ${margin}% · ${money(fixed/12)}/mo fixed costs covered`
-            : `Below unit · shortfall ${money(-net)}/yr · use zero-cost hooks (H1+H4) only`}</span>
-        </div>
-
-        <div class="rev-bench">
-          <div class="rev-bench-head">
-            <span class="rev-bench-title">CTR Benchmarks by Placement</span>
-            <span class="rev-bench-sub">blended ${revenue.click}% = mix of active placements</span>
-          </div>
-          ${benchRow('Post-disbursal thank-you', '8–15%',  'Emotional peak — highest intent')}
-          ${benchRow('Loan rejection',           '5–10%',  'Only positive option on screen')}
-          ${benchRow('Score-Unlock pulse',       '5–12%',  'Gamified, reward-motivated')}
-          ${benchRow('Credit score page',        '2–4%',   'Credit-aware, medium intent')}
-          ${benchRow('Sanctioned email',         '2–5%',   'Transactional email benchmark')}
-          ${benchRow('Homepage / Trending',      '0.5–1.5%','Passive browse, lowest intent')}
-        </div>
-      </section>
+      <aside class="rev-left">${rev_left(d, scen)}</aside>
+      <section class="rev-right">${rev_waterfall(d)}</section>
     </div>
+    <div class="rev-section-full">${rev_cohortTable(d)}</div>
+    <div class="rev-section-full">${rev_momTable(d)}</div>
+    <div class="rev-section-full">${rev_splitSection(d)}</div>
   `;
+}
+
+function rev_heroSummary(d) {
+  const r   = revenue;
+  const be  = d.splitRows.find(s => s.gcPct === r.split);
+  const beMo = be ? (be.be === Infinity ? '—' : fmt(be.be) + ' cards/mo') : '—';
+  return `
+    <div class="rev-hs">
+      <p class="rev-hs-label">What Mobikwik earns from this partnership</p>
+      <div class="rev-hs-grid">
+        <div class="rev-hs-cell">
+          <div class="rev-hs-num">${fmt(d.cardsPerMonth)}</div>
+          <div class="rev-hs-lbl">Cards / month</div>
+          <div class="rev-hs-sub">at ${r.approvalPct}% bank approval</div>
+        </div>
+        <div class="rev-hs-cell">
+          <div class="rev-hs-num">${money(d.annualGross)}</div>
+          <div class="rev-hs-lbl">Gross Revenue / year</div>
+          <div class="rev-hs-sub">₹${fmt(d.blendedComm)} blended commission × 12mo</div>
+        </div>
+        <div class="rev-hs-cell rev-hs-highlight">
+          <div class="rev-hs-num">${money(d.mwRevYr)}</div>
+          <div class="rev-hs-lbl">Mobikwik share / year</div>
+          <div class="rev-hs-sub">${100 - r.split}% of gross · yours to keep</div>
+        </div>
+        <div class="rev-hs-cell">
+          <div class="rev-hs-num">${money(d.gcRevYr)}</div>
+          <div class="rev-hs-lbl">GC share / year</div>
+          <div class="rev-hs-sub">${r.split}% of gross · our operating share</div>
+        </div>
+        <div class="rev-hs-cell">
+          <div class="rev-hs-num">${beMo}</div>
+          <div class="rev-hs-lbl">Break-even for GC</div>
+          <div class="rev-hs-sub">GC self-sustaining from card ${beMo !== '—' ? '1' : '—'}</div>
+        </div>
+      </div>
+    </div>`;
+}
+
+function rev_left(d, scen) {
+  const r       = revenue;
+  const fixedMo = r.team + r.infra;
+  return `
+    <div class="rev-card">
+      <p class="rev-card-eyebrow">Scenario</p>
+      <div class="rev-scenarios">
+        <button class="rev-scen ${scen==='conservative'?'is-on':''}" data-scenario="conservative">Conservative</button>
+        <button class="rev-scen ${scen==='realistic'   ?'is-on':''}" data-scenario="realistic">Realistic</button>
+        <button class="rev-scen ${scen==='aggressive'  ?'is-on':''}" data-scenario="aggressive">Aggressive</button>
+      </div>
+    </div>
+    <div class="rev-card">
+      <p class="rev-card-eyebrow">Funnel Inputs</p>
+      <p class="rev-group-label">Base</p>
+      ${slider('Mobikwik MAU',      'mau',           r.mau,           1000000, 5000000, 100000, fmt(r.mau))}
+      <p class="rev-group-label">Segmentation</p>
+      ${slider('Relevant cohort',   'cohortPct',     r.cohortPct,     10, 60, 1,   r.cohortPct+'%')}
+      ${slider('Placement visible', 'visibilityPct', r.visibilityPct, 20, 90, 1,   r.visibilityPct+'%')}
+      <p class="rev-group-label">Conversion</p>
+      ${slider('Blended CTR',       'ctrPct',        r.ctrPct,        1,  20, 0.5, r.ctrPct+'%')}
+      ${slider('Form completion',   'completionPct', r.completionPct, 10, 60, 1,   r.completionPct+'%')}
+      ${slider('Bank approval',     'approvalPct',   r.approvalPct,   2,  20, 0.5, r.approvalPct+'%')}
+      <div class="rev-blended-comm">
+        <span>Blended commission</span>
+        <b>₹${fmt(d.blendedComm)} <span style="font-weight:400;opacity:0.6;font-size:9px">auto from cohorts ↓</span></b>
+      </div>
+    </div>
+    <div class="rev-card">
+      <p class="rev-card-eyebrow">Revenue Split (Mobikwik / GC)</p>
+      <div class="rev-split-row">
+        <button class="rev-split ${r.split===20?'is-on':''}" data-split="20">80 / 20</button>
+        <button class="rev-split ${r.split===30?'is-on':''}" data-split="30">70 / 30</button>
+        <button class="rev-split ${r.split===40?'is-on':''}" data-split="40">60 / 40</button>
+        <button class="rev-split ${r.split===50?'is-on':''}" data-split="50">50 / 50</button>
+      </div>
+    </div>
+    <div class="rev-card">
+      <p class="rev-card-eyebrow">GC Fixed Costs / Month</p>
+      ${slider('Team + Infra', '_fixed', fixedMo,          50000, 600000, 25000, '₹'+fmt(fixedMo))}
+      <p class="rev-card-eyebrow" style="margin-top:18px">Variable / card</p>
+      ${slider('Ops + caller', '_var',   r.ops + r.hook,   0, 500, 10,    '₹'+fmt(r.ops + r.hook))}
+    </div>`;
+}
+
+function rev_waterfall(d) {
+  const r     = revenue;
+  const steps = [
+    { label: 'Total MAU',          val: d.s1,            sub: 'Mobikwik monthly active users' },
+    { label: 'Relevant Cohort',    val: d.s2,            sub: r.cohortPct+'% · credit-eligible signal' },
+    { label: 'Placement Visible',  val: d.s3,            sub: r.visibilityPct+'% · 8 personalised surfaces' },
+    { label: 'Clicks',             val: d.s4,            sub: r.ctrPct+'% blended CTR' },
+    { label: 'Form Completions',   val: d.s5,            sub: r.completionPct+'% · pre-filled short journey' },
+    { label: 'Cards / Month',      val: d.cardsPerMonth, sub: r.approvalPct+'% bank approval', isOutput: true },
+  ];
+  const dropPcts = [r.cohortPct, r.visibilityPct, r.ctrPct, r.completionPct, r.approvalPct];
+
+  const wfHtml = steps.map((s, i) => `
+    <div class="rev-wf-step${s.isOutput ? ' is-output' : ''}">
+      <div class="rev-wf-num">${fmt(Math.round(s.val))}</div>
+      <div class="rev-wf-lbl">${s.label}</div>
+      <div class="rev-wf-sub">${s.sub}</div>
+    </div>
+    ${i < steps.length - 1 ? `
+    <div class="rev-wf-connector">
+      <div class="rev-wf-line"></div>
+      <span class="rev-wf-pct">${dropPcts[i]}% →</span>
+      <div class="rev-wf-line"></div>
+    </div>` : ''}`).join('');
+
+  return `
+    <p class="rev-pretitle">01 · Conversion Funnel</p>
+    <div class="rev-waterfall">${wfHtml}</div>
+    <div class="rev-hero-card" style="margin-top:20px">
+      <div class="rev-hero-top">
+        <span class="rev-hero-eyebrow">Gross Commission</span>
+        <span class="rev-hero-side">${money(d.monthlyGross)} / month</span>
+      </div>
+      <div class="rev-hero-num">${money(d.annualGross)}<span class="rev-hero-unit">/ year</span></div>
+      <div class="rev-hero-foot">${fmt(d.cardsPerMonth * 12)} cards / year · ₹${fmt(d.blendedComm)} blended</div>
+    </div>
+    <div class="rev-split-cards">
+      <div class="rev-side-card">
+        <p class="rev-side-eyebrow">Mobikwik Revenue</p>
+        <p class="rev-side-meta">${100 - r.split}% share</p>
+        <div class="rev-side-num">${money(d.mwRevYr)}</div>
+        <p class="rev-side-foot">per year</p>
+      </div>
+      <div class="rev-side-card gc-accent">
+        <p class="rev-side-eyebrow">GC Revenue</p>
+        <p class="rev-side-meta">${r.split}% share</p>
+        <div class="rev-side-num">${money(d.gcRevYr)}</div>
+        <p class="rev-side-foot">per year</p>
+      </div>
+    </div>`;
+}
+
+function rev_cohortTable(d) {
+  const mauOk = Math.abs(d.mauPctSum - 100) < 0.5;
+  const recOk = d.reconcilePct < 5;
+  const rows  = d.cohortRows.map((c, i) => `
+    <tr>
+      <td class="rev-td-name">${c.name}<div class="rev-td-type">${c.cardType}</div></td>
+      <td><input class="rev-cell-input" type="number" min="0" max="100" step="1"
+           data-cohort-idx="${i}" data-cohort-field="mauPct" value="${c.mauPct}">%</td>
+      <td class="rev-cell-num">${fmt(c.mauAbs)}</td>
+      <td><input class="rev-cell-input" type="number" min="0" max="30" step="0.5"
+           data-cohort-idx="${i}" data-cohort-field="ctr" value="${c.ctr}">%</td>
+      <td><input class="rev-cell-input" type="number" min="0" max="80" step="1"
+           data-cohort-idx="${i}" data-cohort-field="completion" value="${c.completion}">%</td>
+      <td><input class="rev-cell-input" type="number" min="0" max="30" step="0.5"
+           data-cohort-idx="${i}" data-cohort-field="approval" value="${c.approval}">%</td>
+      <td class="rev-cell-num rev-cell-cards">${fmt(c.cards)}</td>
+      <td>₹<input class="rev-cell-input rev-cell-input-wide" type="number" min="500" max="3500" step="50"
+           data-cohort-idx="${i}" data-cohort-field="commission" value="${c.commission}"></td>
+      <td class="rev-cell-num">${money(c.cards * c.commission * 12)}</td>
+    </tr>`).join('');
+
+  return `
+    <div class="rev-section-head">
+      <span class="rev-section-title">02 · Cohort Breakdown</span>
+      <span class="rev-reconcile ${recOk ? 'is-ok' : 'is-warn'}">
+        ${recOk ? '✓' : '⚠'} Cohort ${fmt(d.totalCohortCards)} vs funnel ${fmt(d.cardsPerMonth)} · ${d.reconcilePct.toFixed(1)}% diff
+      </span>
+      ${!mauOk ? `<span class="rev-reconcile is-warn">⚠ MAU% sums to ${d.mauPctSum}% — adjust to 100%</span>` : ''}
+    </div>
+    <div class="rev-table-wrap">
+      <table class="rev-table">
+        <thead><tr>
+          <th>Cohort</th><th>MAU%</th><th>MAU</th>
+          <th>CTR</th><th>Completion</th><th>Approval</th>
+          <th>Cards/mo</th><th>Comm/card</th><th>Annual Comm</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+        <tfoot><tr class="rev-table-foot">
+          <td><b>Blended / Total</b></td>
+          <td class="${mauOk ? '' : 'rev-cell-warn'}">${d.mauPctSum}%</td>
+          <td></td><td></td><td></td><td></td>
+          <td><b>${fmt(d.totalCohortCards)}</b></td>
+          <td><b>₹${fmt(d.blendedComm)}</b></td>
+          <td><b>${money(d.totalCohortCards * d.blendedComm * 12)}</b></td>
+        </tr></tfoot>
+      </table>
+    </div>`;
+}
+
+function rev_momTable(d) {
+  const avgIdx = (revenue.seasonality.reduce((a, b) => a + b, 0) / 12).toFixed(3);
+  const rows   = d.mom.map((m, i) => {
+    const isPeak = i === 10;
+    const isLean = i === 5 || i === 6;
+    return `<tr class="${isPeak ? 'rev-mom-peak' : isLean ? 'rev-mom-lean' : ''}">
+      <td><b>${m.month}</b>${isPeak ? ' 🪔' : isLean ? ' ☂' : ''}</td>
+      <td><input class="rev-cell-input rev-cell-input-sm" type="number" min="0.1" max="3" step="0.05"
+           data-season-idx="${i}" value="${m.idx}"></td>
+      <td class="rev-cell-num">${fmt(d.cardsPerMonth)}</td>
+      <td class="rev-cell-num rev-cell-cards">${fmt(m.cards)}</td>
+      <td class="rev-cell-num">${money(m.gcRev)}</td>
+      <td class="rev-cell-num">${money(m.mwRev)}</td>
+      <td class="rev-cell-num">${money(m.gcCost)}</td>
+      <td class="rev-cell-num">${money(m.gcNet)}</td>
+    </tr>`;
+  }).join('');
+
+  return `
+    <div class="rev-section-head">
+      <span class="rev-section-title">03 · Month-on-Month · Seasonality</span>
+      <span class="rev-section-sub">Base ${fmt(d.cardsPerMonth)} cards/mo × index · avg index ${avgIdx} · annual ${fmt(d.momTotals.cards)} cards</span>
+    </div>
+    <div class="rev-table-wrap">
+      <table class="rev-table">
+        <thead><tr>
+          <th>Month</th><th>Index</th><th>Base Cards</th><th>Seas. Cards</th>
+          <th>GC Rev</th><th>MW Rev</th><th>GC Cost</th><th>GC Net</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+        <tfoot><tr class="rev-table-foot">
+          <td><b>Full Year</b></td>
+          <td><b>${avgIdx}</b></td>
+          <td></td>
+          <td><b>${fmt(d.momTotals.cards)}</b></td>
+          <td><b>${money(d.momTotals.gcRev)}</b></td>
+          <td><b>${money(d.momTotals.mwRev)}</b></td>
+          <td><b>${money(d.momTotals.gcCost)}</b></td>
+          <td><b>${money(d.momTotals.gcNet)}</b></td>
+        </tr></tfoot>
+      </table>
+    </div>`;
+}
+
+function rev_splitSection(d) {
+  const r         = revenue;
+  const fixedMo   = r.team + r.infra;
+  const varPerCard = r.ops + r.hook;
+  const net        = d.gcNetYr;
+
+  const splitRows = d.splitRows.map(s => {
+    const isActive = s.gcPct === r.split;
+    const beOk     = s.be !== Infinity && s.be <= d.cardsPerMonth;
+    const beTxt    = s.be === Infinity ? '—' : (beOk ? '✓ ' : '⚠ ') + fmt(s.be);
+    const mwPct    = 100 - s.gcPct;
+    let verdict, verdictCls;
+    if (s.gcAnnNet < 0) {
+      verdict = 'GC not viable at this split — risk of deprioritisation'; verdictCls = 'rev-verdict-warn';
+    } else if (mwPct >= 80) {
+      verdict = 'Maximum Mobikwik upside — ask for this first'; verdictCls = 'rev-verdict-good';
+    } else if (mwPct >= 70) {
+      verdict = 'Strong Mobikwik share · GC still profitable'; verdictCls = 'rev-verdict-good';
+    } else if (mwPct >= 60) {
+      verdict = 'Balanced split · achievable in initial negotiations'; verdictCls = 'rev-verdict-ok';
+    } else {
+      verdict = 'Equal share — floor for Mobikwik, ceiling for GC'; verdictCls = 'rev-verdict-ok';
+    }
+    return `<tr class="${isActive ? 'rev-split-active' : ''}">
+      <td><b>${s.label}</b>${isActive ? ' ◀' : ''}</td>
+      <td class="rev-cell-num rev-cell-mw">${money(s.mwAnnRev)}</td>
+      <td class="rev-cell-num">${money(s.gcAnnRev)}</td>
+      <td class="rev-cell-num ${s.gcAnnNet < 0 ? 'rev-cell-warn' : ''}">${money(s.gcAnnNet)}</td>
+      <td class="rev-cell-num ${beOk ? '' : 'rev-cell-warn'}">${beTxt}</td>
+      <td class="${verdictCls}">${verdict}</td>
+    </tr>`;
+  }).join('');
+
+  return `
+    <div class="rev-section-head">
+      <span class="rev-section-title">04 · Split Sensitivity</span>
+      <span class="rev-section-sub">Active: ${100 - r.split}/${r.split} · blended comm ₹${fmt(d.blendedComm)} · cards ${fmt(d.cardsPerMonth)}/mo</span>
+    </div>
+    <div class="rev-table-wrap">
+      <table class="rev-table">
+        <thead><tr>
+          <th>MW / GC Split</th>
+          <th class="rev-cell-mw">Mobikwik / year</th>
+          <th>GC Rev / year</th>
+          <th>GC Net / year</th>
+          <th>GC break-even</th>
+          <th>Verdict</th>
+        </tr></thead>
+        <tbody>${splitRows}</tbody>
+      </table>
+    </div>
+    <div class="rev-pl" style="margin-top:20px">
+      <p class="rev-pl-title">GC P&amp;L · ${100 - r.split} / ${r.split} split</p>
+      <div class="rev-pl-row">
+        <span>Gross Revenue (GC share)</span>
+        <span class="rev-pl-mo">${money(d.gcRevMo)} / mo</span>
+        <span class="rev-pl-yr">${money(d.gcRevYr)} / yr</span>
+      </div>
+      <div class="rev-pl-row">
+        <span>Fixed Costs</span>
+        <span class="rev-pl-mo">${money(fixedMo)} / mo</span>
+        <span class="rev-pl-yr">${money(fixedMo * 12)} / yr</span>
+      </div>
+      <div class="rev-pl-row">
+        <span>Variable Costs</span>
+        <span class="rev-pl-mo">${money(d.gcVarMo)} / mo</span>
+        <span class="rev-pl-yr">${money(d.gcVarMo * 12)} / yr</span>
+      </div>
+      <div class="rev-pl-row rev-pl-net ${net >= 0 ? 'is-pos' : 'is-neg'}">
+        <span><b>Net Profit</b></span>
+        <span class="rev-pl-mo"><b>${money(d.gcNetMo)} / mo</b></span>
+        <span class="rev-pl-yr"><b>${money(net)} / yr</b></span>
+      </div>
+    </div>
+    <div class="rev-status ${net >= 0 ? 'is-good' : 'is-bad'}">
+      <span class="rev-status-icon">${net >= 0 ? '✓' : '⚠️'}</span>
+      <span>${net >= 0
+        ? `Unit positive · GC margin ${d.margin}% · ${money(fixedMo)}/mo fixed covered`
+        : `Below unit · shortfall ${money(-net)}/yr · switch to 60/40 or reduce fixed costs`}</span>
+    </div>
+    <div class="rev-bench">
+      <div class="rev-bench-head">
+        <span class="rev-bench-title">CTR Benchmarks by Placement</span>
+        <span class="rev-bench-sub">blended ${r.ctrPct}% = weighted mix across 8 personalised surfaces</span>
+      </div>
+      ${benchRow('EMI Bill-Due (earned trigger)',  '10–15%', 'Strongest intent — repayment streak momentum')}
+      ${benchRow('Bill-Pay Success (loss frame)',  '8–14%',  'Emotional peak — just-paid, next step framing')}
+      ${benchRow('Score-Unlock pulse',             '5–12%',  'Gamified, reward-motivated')}
+      ${benchRow('Lens Cashflow match',            '5–10%',  'AA-matched card feels personalised')}
+      ${benchRow('Credit Score page',              '2–4%',   'Credit-aware, medium intent')}
+      ${benchRow('Homepage Trending / App Grid',   '0.5–2%', 'Passive browse, lowest intent')}
+    </div>`;
+}
+
+// ─── GC Funnel page (/funnel-gc) ──────────────────────────────────────────────
+
+function renderFunnelGC() {
+  const el = document.getElementById('funnelGCModel');
+  if (!el) return;
+  const d    = revDerived();
+  const scen = revenue._scenario || 'conservative';
+  el.innerHTML = `
+    ${gc_heroSummary(d)}
+    <div class="rev-grid">
+      <aside class="rev-left">${gc_left(d, scen)}</aside>
+      <section class="rev-right">${gc_primaryFunnel(d)}</section>
+    </div>
+    <div class="rev-section-full">${gc_retargetingSection(d)}</div>
+    <div class="rev-section-full">${gc_momTable(d)}</div>
+    <div class="rev-section-full">${gc_splitSection(d)}</div>
+  `;
+}
+
+function gc_heroSummary(d) {
+  const r = revenue;
+  return `
+    <div class="rev-hs gc-hs">
+      <p class="rev-hs-label">GC total economics from the Mobikwik partnership</p>
+      <div class="rev-hs-grid">
+        <div class="rev-hs-cell">
+          <div class="rev-hs-num">${fmt(d.cardsPerMonth)}</div>
+          <div class="rev-hs-lbl">Primary cards / month</div>
+          <div class="rev-hs-sub">from funnel at ${r.approvalPct}% approval</div>
+        </div>
+        <div class="rev-hs-cell">
+          <div class="rev-hs-num">${money(d.gcNetYr)}</div>
+          <div class="rev-hs-lbl">GC Net (primary) / year</div>
+          <div class="rev-hs-sub">${r.split}% share minus fixed &amp; ops costs</div>
+        </div>
+        <div class="rev-hs-cell">
+          <div class="rev-hs-num">${fmt(d.retarg.rtCards)}</div>
+          <div class="rev-hs-lbl">Retargeted cards / month</div>
+          <div class="rev-hs-sub">drop-off recovery · 100% GC</div>
+        </div>
+        <div class="rev-hs-cell">
+          <div class="rev-hs-num">${money(d.retarg.rtNetYr)}</div>
+          <div class="rev-hs-lbl">GC Net (retargeting) / year</div>
+          <div class="rev-hs-sub">no MW share on retargeted cards</div>
+        </div>
+        <div class="rev-hs-cell rev-hs-highlight gc-hs-highlight">
+          <div class="rev-hs-num">${money(d.totalNetYr)}</div>
+          <div class="rev-hs-lbl">Total GC Net / year</div>
+          <div class="rev-hs-sub">primary + retargeting · combined margin ${d.totalMargin}%</div>
+        </div>
+      </div>
+    </div>`;
+}
+
+function gc_left(d, scen) {
+  const r       = revenue;
+  const fixedMo = r.team + r.infra;
+  return `
+    <div class="rev-card">
+      <p class="rev-card-eyebrow">Scenario</p>
+      <div class="rev-scenarios">
+        <button class="rev-scen ${scen==='conservative'?'is-on':''}" data-scenario="conservative">Conservative</button>
+        <button class="rev-scen ${scen==='realistic'   ?'is-on':''}" data-scenario="realistic">Realistic</button>
+        <button class="rev-scen ${scen==='aggressive'  ?'is-on':''}" data-scenario="aggressive">Aggressive</button>
+      </div>
+    </div>
+    <div class="rev-card">
+      <p class="rev-card-eyebrow">Funnel Inputs</p>
+      <p class="rev-group-label">Base</p>
+      ${slider('Mobikwik MAU',      'mau',           r.mau,           1000000, 5000000, 100000, fmt(r.mau))}
+      <p class="rev-group-label">Segmentation</p>
+      ${slider('Relevant cohort',   'cohortPct',     r.cohortPct,     10, 60, 1,   r.cohortPct+'%')}
+      ${slider('Placement visible', 'visibilityPct', r.visibilityPct, 20, 90, 1,   r.visibilityPct+'%')}
+      <p class="rev-group-label">Conversion</p>
+      ${slider('Blended CTR',       'ctrPct',        r.ctrPct,        1,  20, 0.5, r.ctrPct+'%')}
+      ${slider('Form completion',   'completionPct', r.completionPct, 10, 60, 1,   r.completionPct+'%')}
+      ${slider('Bank approval',     'approvalPct',   r.approvalPct,   2,  20, 0.5, r.approvalPct+'%')}
+      <div class="rev-blended-comm">
+        <span>Blended commission</span>
+        <b>₹${fmt(d.blendedComm)} <span style="font-weight:400;opacity:0.6;font-size:9px">auto from cohorts ↓</span></b>
+      </div>
+    </div>
+    <div class="rev-card">
+      <p class="rev-card-eyebrow">Revenue Split (Mobikwik / GC)</p>
+      <div class="rev-split-row">
+        <button class="rev-split ${r.split===20?'is-on':''}" data-split="20">80 / 20</button>
+        <button class="rev-split ${r.split===30?'is-on':''}" data-split="30">70 / 30</button>
+        <button class="rev-split ${r.split===40?'is-on':''}" data-split="40">60 / 40</button>
+        <button class="rev-split ${r.split===50?'is-on':''}" data-split="50">50 / 50</button>
+      </div>
+    </div>
+    <div class="rev-card">
+      <p class="rev-card-eyebrow">GC Fixed Costs / Month</p>
+      ${slider('Team + Infra', '_fixed', fixedMo, 50000, 600000, 25000, '₹'+fmt(fixedMo))}
+      <p class="rev-card-eyebrow" style="margin-top:18px">Variable / card</p>
+      ${slider('Ops + caller', '_var', r.ops + r.hook, 0, 500, 10, '₹'+fmt(r.ops + r.hook))}
+    </div>
+    <div class="rev-card">
+      <p class="rev-card-eyebrow">Retargeting Inputs</p>
+      <p class="rev-group-label">Traffic split</p>
+      ${retargSlider('API traffic %',        'apiSplitPct',   r.apiSplitPct,   10, 100, 5,  r.apiSplitPct+'%')}
+      ${retargSlider('Drop-off rate',        'dropOffPct',    r.dropOffPct,    10, 90,  5,  r.dropOffPct+'%')}
+      ${retargSlider('Retarg conversion %',  'retargConvPct', r.retargConvPct, 0.5, 10, 0.5, r.retargConvPct+'%')}
+      <p class="rev-group-label">Economics</p>
+      ${retargSlider('Commission / card',    'retargComm',    r.retargComm,    500, 5000, 100, '₹'+fmt(r.retargComm))}
+      ${retargSlider('User bonus / card',    'retargBonus',   r.retargBonus,   0,   1000, 50,  '₹'+fmt(r.retargBonus))}
+    </div>`;
+}
+
+function gc_primaryFunnel(d) {
+  const r = revenue;
+  const levers = [
+    { label: 'Wallet MAU',       value: fmt(d.s1),             lever: 'Distribution reach',     hint: 'Grow active base or expand to Zip EMI users' },
+    { label: 'Credit cohort',    value: fmt(Math.round(d.s2)), lever: 'Cohort quality',          hint: 'Improve Lens segmentation — more precise targeting' },
+    { label: 'Saw placement',    value: fmt(Math.round(d.s3)), lever: 'Placement quality',       hint: 'More surfaces, better position within each screen' },
+    { label: 'Clicked',          value: fmt(Math.round(d.s4)), lever: 'Creative & hook quality', hint: 'A/B test card copy, visuals, and benefit framing' },
+    { label: 'Started form',     value: fmt(Math.round(d.s5)), lever: 'Form UX',                 hint: 'Shorter form, pre-fill from AA data, instant pre-check' },
+    { label: 'Card issued',      value: fmt(d.cardsPerMonth),  lever: 'Card-match accuracy',     hint: 'Route cohorts to highest-approval cards for their profile' },
+  ];
+  const rows = levers.map((l, i) => {
+    const isLast = i === levers.length - 1;
+    return `
+      <div class="gc-wf-row ${isLast ? 'gc-wf-last' : ''}">
+        <div class="gc-wf-inner">
+          <span class="gc-wf-name">${l.label}</span>
+          <span class="gc-wf-val">${l.value}</span>
+        </div>
+        <div class="gc-wf-lever">
+          <span class="gc-wf-lever-tag">Lever: ${l.lever}</span>
+          <span class="gc-wf-lever-hint">${l.hint}</span>
+        </div>
+      </div>
+      ${!isLast ? '<div class="gc-wf-pipe"><div class="rev-wf-line"></div></div>' : ''}`;
+  }).join('');
+
+  const gcShare = r.split / 100;
+  return `
+    <div class="rev-section-head">
+      <span class="rev-section-title">A · Primary Funnel — GC Levers</span>
+      <span class="rev-section-sub">${fmt(d.cardsPerMonth)} cards/mo · ₹${fmt(d.blendedComm)} blended comm · GC ${r.split}% share</span>
+    </div>
+    <div class="gc-wf">${rows}</div>
+    <div class="rev-split-cards">
+      <div class="rev-side-card gc-accent">
+        <div class="rev-side-val">${money(d.gcRevMo)}</div>
+        <div class="rev-side-lbl">GC Gross / month</div>
+      </div>
+      <div class="rev-side-card">
+        <div class="rev-side-val">${money(d.gcNetMo)}</div>
+        <div class="rev-side-lbl">GC Net / month</div>
+      </div>
+      <div class="rev-side-card gc-accent">
+        <div class="rev-side-val">${money(d.gcRevYr)}</div>
+        <div class="rev-side-lbl">GC Gross / year</div>
+      </div>
+      <div class="rev-side-card">
+        <div class="rev-side-val">${money(d.gcNetYr)}</div>
+        <div class="rev-side-lbl">GC Net / year · ${d.margin}% margin</div>
+      </div>
+    </div>`;
+}
+
+function gc_retargetingSection(d) {
+  const r  = revenue;
+  const rt = d.retarg;
+  return `
+    <div class="rev-section-head">
+      <span class="rev-section-title">B · Retargeting — Drop-off Recovery</span>
+      <span class="rev-section-sub">100% GC revenue · no MW share · uplift on top of primary</span>
+    </div>
+    <div class="rev-rt-layout">
+      <div class="rev-rt-funnel">
+        <p class="rev-card-eyebrow" style="margin-bottom:12px">How the pool is built</p>
+        <div class="gc-wf-row"><div class="gc-wf-inner"><span class="gc-wf-name">Form starters / month</span><span class="gc-wf-val">${fmt(Math.round(rt.rtFormStarters))}</span></div></div>
+        <div class="gc-wf-pipe"><div class="rev-wf-line"></div><span class="rev-wf-pct">${r.apiSplitPct}% via API (mobile captured)</span></div>
+        <div class="gc-wf-row"><div class="gc-wf-inner"><span class="gc-wf-name">API starters</span><span class="gc-wf-val">${fmt(Math.round(rt.rtApiStarters))}</span></div></div>
+        <div class="gc-wf-pipe"><div class="rev-wf-line"></div><span class="rev-wf-pct">${r.dropOffPct}% drop off before submit</span></div>
+        <div class="gc-wf-row"><div class="gc-wf-inner"><span class="gc-wf-name">API drop-offs (recoverable)</span><span class="gc-wf-val">${fmt(Math.round(rt.rtDropoffs))}</span></div></div>
+        <div class="gc-wf-pipe"><div class="rev-wf-line"></div><span class="rev-wf-pct">${r.retargConvPct}% retargeting conversion</span></div>
+        <div class="gc-wf-row gc-wf-last"><div class="gc-wf-inner"><span class="gc-wf-name">Retargeted cards / month</span><span class="gc-wf-val">${fmt(rt.rtCards)}</span></div></div>
+      </div>
+      <div class="rev-rt-right">
+        <p class="rev-card-eyebrow" style="margin-bottom:12px">Economics (100% GC)</p>
+        <div class="rev-pl">
+          <div class="rev-pl-row">
+            <span>Gross Revenue</span>
+            <span class="rev-pl-mo">${money(rt.rtGrossMo)} / mo</span>
+            <span class="rev-pl-yr">${money(rt.rtGrossYr)} / yr</span>
+          </div>
+          <div class="rev-pl-row">
+            <span>User Bonus Cost</span>
+            <span class="rev-pl-mo">${money(rt.rtBonusMo)} / mo</span>
+            <span class="rev-pl-yr">${money(rt.rtBonusYr)} / yr</span>
+          </div>
+          <div class="rev-pl-row rev-pl-net ${rt.rtNetMo >= 0 ? 'is-pos' : 'is-neg'}">
+            <span><b>GC Net (retargeting)</b></span>
+            <span class="rev-pl-mo"><b>${money(rt.rtNetMo)} / mo</b></span>
+            <span class="rev-pl-yr"><b>${money(rt.rtNetYr)} / yr</b></span>
+          </div>
+        </div>
+        <div class="rev-pl" style="margin-top:16px">
+          <p class="rev-pl-title">Combined P&amp;L</p>
+          <div class="rev-pl-row">
+            <span>Primary GC Net</span>
+            <span class="rev-pl-yr">${money(d.gcNetYr)} / yr</span>
+          </div>
+          <div class="rev-pl-row">
+            <span>Retargeting GC Net</span>
+            <span class="rev-pl-yr">${money(rt.rtNetYr)} / yr</span>
+          </div>
+          <div class="rev-pl-row rev-pl-net ${d.totalNetYr >= 0 ? 'is-pos' : 'is-neg'}">
+            <span><b>Total GC Net</b></span>
+            <span class="rev-pl-yr"><b>${money(d.totalNetYr)} / yr · ${d.totalMargin}% margin</b></span>
+          </div>
+        </div>
+      </div>
+    </div>`;
+}
+
+function gc_momTable(d) {
+  const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const rows = d.mom.map((m, i) => {
+    const rt = d.momRt[i];
+    const total = m.gcNet + rt.net;
+    return `<tr>
+      <td>${m.month}</td>
+      <td class="rev-cell-num">${fmt(m.cards)}</td>
+      <td class="rev-cell-num">${money(m.gcRev)}</td>
+      <td class="rev-cell-num">${money(m.gcNet)}</td>
+      <td class="rev-cell-num">${fmt(rt.cards)}</td>
+      <td class="rev-cell-num">${money(rt.gross)}</td>
+      <td class="rev-cell-num">${money(rt.net)}</td>
+      <td class="rev-cell-num rev-cell-mw"><b>${money(total)}</b></td>
+    </tr>`;
+  }).join('');
+  const totRt = d.momRt.reduce((s, m) => ({ cards: s.cards + m.cards, gross: s.gross + m.gross, net: s.net + m.net }), { cards: 0, gross: 0, net: 0 });
+  const totTotal = d.momTotals.gcNet + totRt.net;
+  return `
+    <div class="rev-section-head">
+      <span class="rev-section-title">D · Month-on-Month Forecast</span>
+      <span class="rev-section-sub">GC figures only · seasonality-adjusted</span>
+    </div>
+    <div class="rev-table-wrap">
+      <table class="rev-table">
+        <thead>
+          <tr>
+            <th rowspan="2">Month</th>
+            <th colspan="3" style="text-align:center;border-bottom:1px solid rgba(255,255,255,0.1)">Primary</th>
+            <th colspan="3" style="text-align:center;border-bottom:1px solid rgba(255,255,255,0.1)">Retargeting</th>
+            <th rowspan="2" class="rev-cell-mw">Total GC Net</th>
+          </tr>
+          <tr>
+            <th>Cards</th><th>GC Rev</th><th>GC Net</th>
+            <th>Cards</th><th>Gross</th><th>Net</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+        <tfoot><tr class="rev-tfoot">
+          <td><b>Year total</b></td>
+          <td class="rev-cell-num"><b>${fmt(d.momTotals.cards)}</b></td>
+          <td class="rev-cell-num"><b>${money(d.momTotals.gcRev)}</b></td>
+          <td class="rev-cell-num"><b>${money(d.momTotals.gcNet)}</b></td>
+          <td class="rev-cell-num"><b>${fmt(totRt.cards)}</b></td>
+          <td class="rev-cell-num"><b>${money(totRt.gross)}</b></td>
+          <td class="rev-cell-num"><b>${money(totRt.net)}</b></td>
+          <td class="rev-cell-num rev-cell-mw"><b>${money(totTotal)}</b></td>
+        </tr></tfoot>
+      </table>
+    </div>`;
+}
+
+function gc_splitSection(d) {
+  const r = revenue;
+  const rows = d.splitRows.map(s => {
+    const isActive = s.gcPct === r.split;
+    const beOk     = s.be !== Infinity && s.be <= d.cardsPerMonth;
+    const beTxt    = s.be === Infinity ? '—' : (beOk ? '✓ ' : '⚠ ') + fmt(s.be);
+    let verdict, verdictCls;
+    if (s.gcAnnNet < 0) {
+      verdict = 'Not viable for GC — fixed costs exceed revenue at this split'; verdictCls = 'rev-verdict-warn';
+    } else if (s.gcPct >= 50) {
+      verdict = 'Best GC outcome — push for equal split in negotiations'; verdictCls = 'rev-verdict-good';
+    } else if (s.gcPct >= 40) {
+      verdict = 'Healthy GC margin — realistic target split'; verdictCls = 'rev-verdict-good';
+    } else if (s.gcPct >= 30) {
+      verdict = 'Acceptable · combine with retargeting for better total'; verdictCls = 'rev-verdict-ok';
+    } else {
+      verdict = 'Thin GC share — viable only if volumes grow significantly'; verdictCls = 'rev-verdict-warn';
+    }
+    return `<tr class="${isActive ? 'rev-split-active' : ''}">
+      <td><b>${s.label}</b>${isActive ? ' ◀' : ''}</td>
+      <td class="rev-cell-num">${money(s.gcAnnRev)}</td>
+      <td class="rev-cell-num ${s.gcAnnNet < 0 ? 'rev-cell-warn' : ''}">${money(s.gcAnnNet)}</td>
+      <td class="rev-cell-num rev-cell-mw">${money(d.retarg.rtNetYr)}</td>
+      <td class="rev-cell-num rev-cell-mw">${money(s.gcAnnNet + d.retarg.rtNetYr)}</td>
+      <td class="rev-cell-num ${beOk ? '' : 'rev-cell-warn'}">${beTxt}</td>
+      <td class="${verdictCls}">${verdict}</td>
+    </tr>`;
+  }).join('');
+
+  return `
+    <div class="rev-section-head">
+      <span class="rev-section-title">C · Revenue Levers — Split Sensitivity</span>
+      <span class="rev-section-sub">What GC earns at each negotiated split · retargeting is split-agnostic</span>
+    </div>
+    <div class="rev-table-wrap">
+      <table class="rev-table">
+        <thead><tr>
+          <th>MW / GC Split</th>
+          <th>GC Primary Rev/yr</th>
+          <th>GC Primary Net/yr</th>
+          <th class="rev-cell-mw">Retarg Net/yr</th>
+          <th class="rev-cell-mw">Total GC Net/yr</th>
+          <th>GC break-even</th>
+          <th>Verdict</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+    <div class="rev-status ${d.totalNetYr >= 0 ? 'is-good' : 'is-bad'}">
+      <span class="rev-status-icon">${d.totalNetYr >= 0 ? '✓' : '⚠️'}</span>
+      <span>${d.totalNetYr >= 0
+        ? `Total GC positive · ${money(d.totalNetYr)}/yr · ${d.totalMargin}% combined margin`
+        : `Total GC negative · shortfall ${money(-d.totalNetYr)}/yr`}</span>
+    </div>`;
+}
+
+function retargSlider(label, key, value, min, max, step, display) {
+  return `<div class="rev-slider">
+    <div class="rev-slider-top"><span>${label}</span><b>${display}</b></div>
+    <input type="range" class="rev-range" data-retarg="${key}" min="${min}" max="${max}" step="${step}" value="${value}">
+  </div>`;
 }
 
 function slider(label, key, value, min, max, step, display) {
@@ -2052,17 +2974,18 @@ async function apiStatus() {
 
 // ─── Router ───────────────────────────────────────────────────────────────────
 function route(path = location.pathname) {
-  state.route = ['/', '/demo', '/revenue'].includes(path) ? path : '/404';
+  state.route = ['/', '/demo', '/revenue', '/funnel-gc'].includes(path) ? path : '/404';
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
-  const id = state.route === '/404' ? 'notfound' : state.route === '/' ? 'home' : state.route.slice(1);
-  document.getElementById(id)?.classList.add('active');
+  const idMap = { '/': 'home', '/demo': 'demo', '/revenue': 'revenue', '/funnel-gc': 'funnel-gc', '/404': 'notfound' };
+  document.getElementById(idMap[state.route])?.classList.add('active');
   document.querySelectorAll('[data-nav]').forEach(a =>
     a.classList.toggle('active', a.dataset.nav === state.route)
   );
   document.body.classList.toggle('dark-body', state.route === '/demo');
-  if (state.route === '/')        renderHome();
-  if (state.route === '/demo')    renderDemo();
-  if (state.route === '/revenue') renderRevenue();
+  if (state.route === '/')           renderHome();
+  if (state.route === '/demo')       renderDemo();
+  if (state.route === '/revenue')    renderRevenue();
+  if (state.route === '/funnel-gc')  renderFunnelGC();
 }
 
 // ─── Event delegation ─────────────────────────────────────────────────────────
@@ -2086,7 +3009,7 @@ document.addEventListener('click', e => {
   if (zip)       { state.zip   = zip;   }
   if (tab)       { state.tab   = tab;   if (tab === 'placements') { p1State = { step: 0, cats: [], spendByCat: {} }; } }
   if (placement) { state.placement = Number(placement); state.placementClicked = false; p1State = { step: 0, cats: [], spendByCat: {} }; }
-  if (cohort)    { state.cohort = cohort; }
+  if (cohort)    { state.cohort = cohort; if (cohortPrimaryPlacement[cohort]) { state.placement = cohortPrimaryPlacement[cohort]; p1State = { step: 0, cats: [], spendByCat: {} }; } }
   if (day !== undefined && day !== null) { state.day = Number(day); }
   if (hook)      { state.hook = hook; }
 
@@ -2098,14 +3021,22 @@ document.addEventListener('click', e => {
     renderCommentary();
   }
 
+  const split = e.target.closest('[data-split]')?.dataset.split;
+  if (split) {
+    revenue.split = Number(split);
+    revenue._scenario = null;
+    if (state.route === '/funnel-gc') renderFunnelGC(); else renderRevenue();
+  }
+
   if (scenario) {
     const presets = {
-      conservative: { mau: 3190000, see: 35, click: 4.5, apply: 25, approval: 22.8, commission: 2000, split: 30, hook: 0 },
-      realistic:    { mau: 4500000, see: 50, click: 6,   apply: 28, approval: 30,   commission: 2000, split: 30, hook: 150 },
-      aggressive:   { mau: 4500000, see: 65, click: 8,   apply: 32, approval: 32,   commission: 2200, split: 40, hook: 350 },
+      conservative: { mau: 3190000, cohortPct: 30, visibilityPct: 65, ctrPct: 10, completionPct: 40, approvalPct: 7.5, split: 30, team: 100000, infra: 0, ops: 0, hook: 0 },
+      realistic:    { mau: 3190000, cohortPct: 35, visibilityPct: 70, ctrPct: 11, completionPct: 42, approvalPct: 8.0, split: 30, team: 100000, infra: 0, ops: 0, hook: 0 },
+      aggressive:   { mau: 3190000, cohortPct: 40, visibilityPct: 75, ctrPct: 12, completionPct: 45, approvalPct: 9.0, split: 40, team: 100000, infra: 0, ops: 0, hook: 0 },
     };
     Object.assign(revenue, presets[scenario]);
-    renderRevenue();
+    revenue._scenario = scenario;
+    if (state.route === '/funnel-gc') renderFunnelGC(); else renderRevenue();
   }
 });
 
@@ -2119,16 +3050,30 @@ document.addEventListener('input', e => {
   const key = e.target.dataset.rev;
   if (key) {
     const v = Number(e.target.value) || 0;
-    if (key === '_fixed') {
-      revenue.team  = Math.round(v * 0.88);
-      revenue.infra = v - revenue.team;
-    } else if (key === '_var') {
-      revenue.ops    = Math.round(v * 0.4);
-      revenue.caller = v - revenue.ops;
-    } else {
-      revenue[key] = v;
-    }
-    renderRevenue();
+    if      (key === '_fixed') { revenue.team = v; revenue.infra = 0; }
+    else if (key === '_var')   { revenue.ops  = v; revenue.hook  = 0; }
+    else                       { revenue[key] = v; }
+    revenue._scenario = null;
+    if (state.route === '/funnel-gc') renderFunnelGC(); else renderRevenue();
+  }
+
+  const cohortIdx   = e.target.dataset.cohortIdx;
+  const cohortField = e.target.dataset.cohortField;
+  if (cohortIdx !== undefined && cohortField) {
+    revenue.cohorts[Number(cohortIdx)][cohortField] = Number(e.target.value) || 0;
+    if (state.route === '/funnel-gc') renderFunnelGC(); else renderRevenue();
+  }
+
+  const seasonIdx = e.target.dataset.seasonIdx;
+  if (seasonIdx !== undefined) {
+    revenue.seasonality[Number(seasonIdx)] = Number(e.target.value) || 0.01;
+    if (state.route === '/funnel-gc') renderFunnelGC(); else renderRevenue();
+  }
+
+  const retargKey = e.target.dataset.retarg;
+  if (retargKey) {
+    revenue[retargKey] = Number(e.target.value) || 0;
+    if (state.route === '/funnel-gc') renderFunnelGC(); else renderRevenue();
   }
 });
 
@@ -2136,8 +3081,13 @@ document.addEventListener('change', e => {
   if (e.target.id === 'lensControl') {
     state.lens = e.target.value;
     state.cohort = e.target.value;
+    if (cohortPrimaryPlacement[e.target.value]) {
+      state.placement = cohortPrimaryPlacement[e.target.value];
+      p1State = { step: 0, cats: [], spendByCat: {} };
+    }
     renderPhone();
     renderCommentary();
+    renderLeftList();
   }
 });
 
